@@ -28,9 +28,10 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
     let mut mk = |kind: LabelKind, a: i32, b: i32| {
         truth.push(Label {
             id: format!(
-                "truth:{}:{}",
+                "truth:{}:{}:{}",
                 serde_json::to_string(&kind).unwrap().trim_matches('"'),
-                a
+                a,
+                truth.len()
             ),
             kind,
             start_day: start_day + a,

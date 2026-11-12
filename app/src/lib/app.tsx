@@ -218,5 +218,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ui: { palette, help, method, setPalette, setHelp, setMethod },
   };
   void LAB_EMPTY;
+  if (import.meta.env.DEV || new URLSearchParams(location.search).get('debug') === '1') (window as unknown as { __wl: AppCtx }).__wl = value;
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

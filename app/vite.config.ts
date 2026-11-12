@@ -31,7 +31,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), localData()],
     worker: { format: 'es' as const },
     optimizeDeps: { exclude: ['@duckdb/duckdb-wasm'] },
-    build: { target: 'es2022', sourcemap: true, chunkSizeWarningLimit: 1500 },
+    build: { target: 'es2022', sourcemap: true, chunkSizeWarningLimit: 1500, assetsInlineLimit: 0 },
     server: {
       host: true,
       fs: { allow: [resolve(root, '..')] },

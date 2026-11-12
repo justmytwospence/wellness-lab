@@ -112,8 +112,8 @@ export default function Inbox() {
           <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} aria-label="Filter labels"><option value="">All kinds</option>{LABEL_KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.name}</option>)}</select>
           <div className="card" style={{ marginTop: 8 }} data-testid="labels">
             {labels.length === 0 && <Empty>No labels yet.</Empty>}
-            {labels.map((l) => (
-              <div key={l.id} className="row" style={{ padding: '3px 0', borderBottom: `1px solid ${PAL.grid}` }}>
+            {labels.map((l, i) => (
+              <div key={`${l.id}:${i}`} className="row" style={{ padding: '3px 0', borderBottom: `1px solid ${PAL.grid}` }}>
                 <b style={{ color: kindInfo(l.kind).color }}>{kindInfo(l.kind).name}</b><span className="mono" style={{ fontSize: 12 }}>{isoDay(l.start_day)}{l.end_day > l.start_day ? ` to ${isoDay(l.end_day)}` : ''}</span>
                 <span className="muted" style={{ fontSize: 11 }}>{l.source}</span><span style={{ flex: 1 }} />
                 <button onClick={() => setLabelEdit(l)}>Edit</button><button onClick={() => void deleteLabel(l.id)}>Delete</button>
