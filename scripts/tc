@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Run a command in the wellness-lab toolchain container (Rust, wasm-pack, maturin, Node 24, uv, Playwright).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+docker build -q -t wellness-lab-toolchain -f docker/toolchain.Dockerfile docker >/dev/null
+tty=(); [ -t 0 ] && tty=(-t)
+mkdir -p .local/home .local/cargo .local/npm .local/uv
+# shellcheck disable=SC2086
+exec docker run --rm -i "${tty[@]}" --user "$(id -u):$(id -g)" -e HOME=/w/.local/home \
+  -e CARGO_HOME=/w/.local/cargo -e npm_config_cache=/w/.local/npm -e UV_CACHE_DIR=/w/.local/uv \
+  -e PATH=/w/.local/cargo/bin:/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin \
+  -v "$PWD":/w -w /w ${TC_MOUNTS:-} ${TC_PORTS:-} wellness-lab-toolchain "$@"

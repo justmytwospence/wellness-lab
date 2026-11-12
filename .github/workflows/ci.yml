@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo install wasm-pack --locked --version 0.13.1
+      - run: scripts/build-wasm.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: |
+            packages/engine/pkg
+            .local/wasm-node
+      - uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.9.6
+          manylinux: "2014"
+          target: x86_64
+          args: --release -m crates/py/Cargo.toml -o dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy polars duckdb pyarrow pytest dist/wellness_lab_engine-*.whl && python -m pytest -q crates/py/tests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: python tests/xbind/make_cases.py && node tests/xbind/run.mjs
+  web:
+    needs: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: wasm32-unknown-unknown
+      - run: cargo install wasm-pack --locked --version 0.13.1
+      - run: scripts/build-wasm.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium && npm run e2e

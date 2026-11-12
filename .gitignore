@@ -1,0 +1,9 @@
+target/
+node_modules/
+dist/
+pkg/
+.local/
+*.whl
+app/test-results/
+app/playwright-report/
+app/e2e/.fixtures/

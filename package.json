@@ -1,0 +1,25 @@
+{
+  "name": "wellness-lab",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": "24.x" },
+  "workspaces": ["packages/*", "app"],
+  "scripts": {
+    "dev": "npm -w app run dev",
+    "build": "npm -w app run build",
+    "preview": "npm -w app run preview",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit -p app/tsconfig.json",
+    "e2e": "npm -w app run e2e"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0",
+    "vite": "^6.0.5",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.0",
+    "hyparquet-compressors": "^1.0.0"
+  }
+}

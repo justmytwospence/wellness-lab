@@ -1,0 +1,10 @@
+[package]
+name = "wellness-lab-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "wellness_lab"
+crate-type = ["cdylib"]

@@ -1,0 +1,12 @@
+[workspace]
+members = ["crates/core", "crates/fit", "crates/io", "crates/wasm", "crates/py", "crates/server"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

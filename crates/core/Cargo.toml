@@ -1,0 +1,9 @@
+[package]
+name = "wellness-lab-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "wellness_lab_core"
