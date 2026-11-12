@@ -4,3 +4,39 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
+
+[lib]
+name = "wellness_lab_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wellness-lab-server"
+path = "src/main.rs"
+
+[dependencies]
+wellness-lab-core = { path = "../core" }
+wellness-lab-io = { path = "../io" }
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = ["fs", "compression-gzip", "trace", "set-header"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "stream"] }
+rusqlite = { version = "0.42", features = ["bundled"] }
+rmcp = { version = "3.9", features = ["server", "transport-streamable-http-server"] }
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+regex = "1"
+futures = "0.3"
+anyhow = "1"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3"
