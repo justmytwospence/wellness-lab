@@ -397,6 +397,33 @@ async fn answer(
     Ok(Json(json!({"proposal": p, "label": label})))
 }
 
+#[derive(Deserialize, Default)]
+struct UndoIn {
+    #[serde(default)]
+    label_id: Option<String>,
+}
+
+/// Take back an answer: the proposal reopens and the label it created (if any) is deleted.
+async fn undo(State(s): State<Arc<AppState>>, Path(id): Path<String>, body: Bytes) -> ApiResult<Json<Value>> {
+    let u: UndoIn = if body.is_empty() { UndoIn::default() } else { parse(&body)? };
+    let mut p = s.store.proposal(&id)?.ok_or_else(|| missing("proposal"))?;
+    p.status = ProposalStatus::Open;
+    p.answered_at = None;
+    p.snoozed_until = None;
+    p.asked = true;
+    s.store.put_proposal(&p)?;
+    if let Some(lid) = u.label_id {
+        if let Some(mut l) = s.store.label(&lid)? {
+            if l.proposal_id.as_deref() == Some(id.as_str()) {
+                l.deleted_at = Some(now());
+                s.store.put_label(&l)?;
+            }
+        }
+    }
+    lab::push_state(&s)?;
+    Ok(Json(json!({"proposal": p})))
+}
+
 // ---------------------------------------------------------------- settings
 
 async fn put_settings(State(s): State<Arc<AppState>>, body: Bytes) -> ApiResult<Json<Settings>> {
@@ -539,6 +566,7 @@ pub fn router(s: Arc<AppState>) -> Router {
         .route("/api/labels", post(create_label))
         .route("/api/labels/{id}", put(update_label).delete(delete_label))
         .route("/api/proposals/{id}/answer", post(answer))
+        .route("/api/proposals/{id}/undo", post(undo))
         .route("/api/settings", put(put_settings))
         .route("/api/experiments", post(create_experiment))
         .route(

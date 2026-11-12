@@ -86,6 +86,27 @@ function Help() {
   );
 }
 
+function Login() {
+  const [token, setToken] = useState('');
+  const [err, setErr] = useState('');
+  const go = async () => {
+    const r = await fetch('/api/login', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }) });
+    if (r.ok) location.reload();
+    else setErr('That token was not accepted.');
+  };
+  return (
+    <div className="overlay" style={{ alignItems: 'center', padding: 0 }}>
+      <form className="dialog" style={{ width: 360 }} onSubmit={(e) => { e.preventDefault(); void go(); }}>
+        <h1>Wellness Lab</h1>
+        <p className="muted">Enter the access token for this server (LAB_TOKEN).</p>
+        <input type="password" autoFocus value={token} onChange={(e) => setToken(e.target.value)} aria-label="Access token" style={{ width: '100%', marginBottom: 10 }} />
+        {err && <p className="err">{err}</p>}
+        <button className="primary" type="submit">Sign in</button>
+      </form>
+    </div>
+  );
+}
+
 export function Shell() {
   const app = useApp();
   const loc = useLoc();
@@ -100,6 +121,7 @@ export function Shell() {
     else app.toast(`Could not read "${text}" as a date range`);
   };
   const fresh = app.manifest ? `${app.demo ? 'demo' : `data from ${app.manifest.generated_at.slice(0, 10)}`}` : app.demo ? 'demo data' : 'no data';
+  if (app.needsLogin) return <Login />;
   return (
     <div className="shell">
       <nav className="rail" aria-label="Views">

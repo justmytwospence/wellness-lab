@@ -143,8 +143,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let m: Mode = 'local';
       try {
         const r = await fetch('/api/info', { credentials: 'same-origin' });
-        if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) m = 'server';
-        else if (r.status === 401) { m = 'server'; setNeedsLogin(true); }
+        if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) {
+          const info = (await r.json()) as { mode?: string; auth?: boolean; authed?: boolean };
+          if (info.mode === 'server') { m = 'server'; if (info.auth && !info.authed) setNeedsLogin(true); }
+        }
       } catch { /* local mode */ }
       if (dead) return;
       const st = m === 'server' ? new ServerStateStore() : new LocalStateStore();

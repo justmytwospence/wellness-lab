@@ -161,7 +161,13 @@ export class ServerStateStore implements StateStore {
   undo = (id: string, labelId?: string) => this.j<void>(`/proposals/${encodeURIComponent(id)}/undo`, { method: 'POST', body: JSON.stringify({ label_id: labelId }) });
   saveProposals = async () => {}; // the server detects and stores them itself
   saveSettings = (s: Settings) => this.j<void>('/settings', { method: 'PUT', body: JSON.stringify(s) });
-  saveExperiment = (e: ExperimentDef) => this.j<void>(`/experiments/${encodeURIComponent(e.id)}`, { method: 'PUT', body: JSON.stringify(e) });
+  async saveExperiment(e: ExperimentDef): Promise<void> {
+    try {
+      await this.j<void>(`/experiments/${encodeURIComponent(e.id)}`, { method: 'PUT', body: JSON.stringify(e) });
+    } catch {
+      await this.j<void>('/experiments', { method: 'POST', body: JSON.stringify(e) });
+    }
+  }
   deleteExperiment = (id: string) => this.j<void>(`/experiments/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  setAdherence = (id: string, day: number, adherent: boolean) => this.j<void>(`/experiments/${encodeURIComponent(id)}/adherence`, { method: 'PUT', body: JSON.stringify({ day, adherent }) });
+  setAdherence = (id: string, day: number, adherent: boolean) => this.j<void>(`/experiments/${encodeURIComponent(id)}/adherence/${day}`, { method: 'PUT', body: JSON.stringify({ adherent }) });
 }
