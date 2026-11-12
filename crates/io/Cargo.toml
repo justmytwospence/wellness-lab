@@ -7,3 +7,16 @@ publish = false
 
 [lib]
 name = "wellness_lab_io"
+
+[dependencies]
+wellness-lab-core = { path = "../core" }
+wellness-lab-fit = { path = "../fit" }
+parquet = { version = "60", default-features = false, features = ["arrow", "snap"] }
+arrow-array = "60"
+arrow-schema = "60"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+thiserror = "2"
+zip = { version = "9", default-features = false, features = ["deflate"] }

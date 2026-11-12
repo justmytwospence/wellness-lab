@@ -7,3 +7,6 @@ pkg/
 app/test-results/
 app/playwright-report/
 app/e2e/.fixtures/
+__pycache__/
+.venv/
+*.pyc
