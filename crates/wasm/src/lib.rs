@@ -163,3 +163,107 @@ pub fn synth_labels(seed: f64, days: i32) -> String {
     let (_, labels) = wellness_lab_core::synth::synth(seed as u64, days, 19_723);
     serde_json::to_string(&labels).unwrap_or_default()
 }
+
+// ---- importing a Garmin account export ----
+
+use wellness_lab_fit::{Column, Columns, Tables};
+use wellness_lab_fit::{ExportBuilder as FitBuilder, FitError};
+
+#[wasm_bindgen]
+pub struct ExportBuilder {
+    inner: Option<FitBuilder>,
+}
+
+impl Default for ExportBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[wasm_bindgen]
+impl ExportBuilder {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> ExportBuilder {
+        ExportBuilder { inner: Some(FitBuilder::new()) }
+    }
+
+    #[wasm_bindgen(js_name = addJson)]
+    pub fn add_json(&mut self, path: &str, text: &str) -> Result<String, JsValue> {
+        let b = self.inner.as_mut().ok_or_else(|| jserr("finished"))?;
+        b.add_json(path, text).map(|k| k.as_str().to_string()).map_err(jserr)
+    }
+
+    /// Throws `json-first` when an activity file arrives before the JSON summaries.
+    #[wasm_bindgen(js_name = addFit)]
+    pub fn add_fit(&mut self, name: &str, bytes: &[u8]) -> Result<String, JsValue> {
+        let b = self.inner.as_mut().ok_or_else(|| jserr("finished"))?;
+        match b.add_fit(name, bytes) {
+            Ok(k) => Ok(k.as_str().to_string()),
+            Err(FitError::JsonFirst) => Err(jserr("json-first")),
+            Err(e) => Err(jserr(e)),
+        }
+    }
+
+    pub fn finish(&mut self) -> Result<ExportResult, JsValue> {
+        let b = self.inner.take().ok_or_else(|| jserr("finished"))?;
+        let (tables, report) = b.finish();
+        Ok(ExportResult { tables, report: serde_json::to_string(&report).map_err(jserr)? })
+    }
+}
+
+#[wasm_bindgen]
+pub struct ExportResult {
+    tables: Tables,
+    report: String,
+}
+
+fn columns<'a>(t: &'a Tables, name: &str) -> Option<&'a Columns> {
+    t.table(name).or_else(|| t.series.get(name))
+}
+
+#[wasm_bindgen]
+impl ExportResult {
+    pub fn tables(&self) -> Array {
+        ["days", "sleeps", "stages", "activities", "tags", "devices"].iter().map(|s| JsValue::from_str(s)).collect()
+    }
+    pub fn columns(&self, table: &str) -> Array {
+        columns(&self.tables, table).map(|c| c.iter().map(|(n, _)| JsValue::from_str(n)).collect()).unwrap_or_default()
+    }
+    /// A numeric column; NaN for null. String columns give an empty array.
+    pub fn numeric(&self, table: &str, col: &str) -> Float64Array {
+        let v = columns(&self.tables, table).and_then(|c| c.iter().find(|(n, _)| n == col)).map(|(_, c)| c.f64s()).unwrap_or_default();
+        Float64Array::from(v.as_slice())
+    }
+    /// A string column as a JSON array of string or null.
+    pub fn strings(&self, table: &str, col: &str) -> String {
+        match columns(&self.tables, table).and_then(|c| c.iter().find(|(n, _)| n == col)) {
+            Some((_, Column::Str(v))) => serde_json::to_string(v).unwrap_or_else(|_| "[]".into()),
+            _ => "[]".into(),
+        }
+    }
+    pub fn series(&self) -> Array {
+        self.tables.series.iter().filter(|(_, c)| !c.is_empty() && c[0].1.len() > 0).map(|(n, _)| JsValue::from_str(n)).collect()
+    }
+    #[wasm_bindgen(js_name = seriesColumn)]
+    pub fn series_column(&self, name: &str, col: &str) -> Float64Array {
+        self.numeric(name, col)
+    }
+    #[wasm_bindgen(js_name = rrIds)]
+    pub fn rr_ids(&self) -> Array {
+        self.tables.rr.keys().map(|k| JsValue::from_str(&k.replace("garmin:", "garmin-"))).collect()
+    }
+    pub fn rr(&self, id: &str) -> Float32Array {
+        let key = id.replacen("garmin-", "garmin:", 1);
+        Float32Array::from(self.tables.rr.get(&key).map(|v| v.as_slice()).unwrap_or(&[]))
+    }
+    pub fn report(&self) -> String {
+        self.report.clone()
+    }
+}
+
+/// The synthetic data as an export result, so the app can write it as wellness-v1 files (e2e, demo downloads).
+#[wasm_bindgen(js_name = synthExport)]
+pub fn synth_export(seed: f64, days: i32) -> ExportResult {
+    let (d, _) = wellness_lab_core::synth::synth(seed as u64, days, 19_723);
+    ExportResult { tables: Tables::from_data(&d), report: "{}".into() }
+}
