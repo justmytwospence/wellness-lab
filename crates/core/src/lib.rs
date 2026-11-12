@@ -8,11 +8,15 @@
 )]
 
 pub mod baseline;
+pub mod beats;
 pub mod data;
+pub mod dfa;
 pub mod hrv4t;
 pub mod lab;
 pub mod labels;
+pub mod nights;
 pub mod optim;
 pub mod schema;
 pub mod stats;
+pub mod synth;
 pub mod time;

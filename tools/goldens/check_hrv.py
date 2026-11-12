@@ -114,8 +114,56 @@ def main() -> int:
         report(f"MODEL.{k}", int(not np.isclose(gm[k], om[k], rtol=1e-3, atol=1e-6)), 1, f"{gm[k]:.6g} vs {om[k]:.6g}")
     report("MODEL.lr", int(not np.isclose(gm["lr"], om["lr"], rtol=1e-3, atol=1e-3)), 1, f"{gm['lr']:.6g} vs {om['lr']:.6g}")
     report("MODEL.nights", int(gm["nights"] != om["nights"]), 1)
+    parts = set(a.parts.split(","))
+    if "a1" in parts:
+        check_a1(lab, g)
+    if "beats" in parts:
+        check_beats(lab, g)
     print("FAILED" if fails else "ALL PASS", fails)
     return 1 if fails else 0
+
+
+def check_a1(lab, g):
+    res, _ = lab.run({"kind": "dfa"})
+    acts = frame(res["acts"])
+    ids = acts["id"].cast(pl.Int64)
+    # the engine's window table refers to recordings by their row in `recordings`, listed in acts.act
+    act_rows = acts["act"].to_list()
+    rec = {int(r): int(i) for r, i in zip(act_rows, ids.to_list())}
+    w = frame(res["windows"]).with_columns(activity_id=pl.col("act").cast(pl.Int64).replace_strict(rec)).drop("act")
+    gold = pl.read_parquet(g / "a1_windows.parquet").filter(pl.col("activity_id").is_in(ids.to_list())).with_columns(t_s=pl.col("t_s").round(3))
+    w = w.with_columns(t_s=pl.col("t_s").round(3))
+    report("a1 windows (rows)", abs(gold.height - w.height), gold.height, f"(golden {gold.height}, engine {w.height})")
+    cmp_cols("a1", gold.with_columns(pl.col("activity_id").cast(pl.Float64)), w.with_columns(pl.col("activity_id").cast(pl.Float64)), ["activity_id", "t_s"], ["hr", "a1", "art", "rep"], rtol=1e-6, atol=1e-9)
+    gn = json.loads((g / "A1_NOW.json").read_text())
+    for sp, v in gn.items():
+        o = res["now"].get(sp, {})
+        for k in ("vt1", "vt2", "vt1_all", "vt2_all"):
+            a_, b_ = v.get(k), o.get(k)
+            ok = (a_ is None and b_ is None) or (a_ is not None and b_ is not None and abs(a_ - b_) < 0.5)
+            report(f"A1_NOW.{sp}.{k}", int(not ok), 1, f"{a_} vs {b_}")
+
+
+def check_beats(lab, g):
+    s, _ = lab.run({"kind": "sessions"})
+    ours = frame(s).with_columns(activity_id=pl.col("id").cast(pl.Int64)).drop("id")
+    gold = pl.read_parquet(g / "rr_sessions.parquet").with_columns(beats=pl.col("beats").cast(pl.Float64))
+    report("sessions (rows)", abs(gold.height - ours.height), gold.height, f"(golden {gold.height}, engine {ours.height})")
+    cmp_cols("sessions", gold, ours.with_columns(pl.col("activity_id")), ["activity_id"], ["beats", "repeat_share", "artifact_share", "quality"])
+    for aid in json.loads((g / "beats_ids.json").read_text()):
+        d, _ = lab.run({"kind": "beats", "id": str(aid)})
+        sc = json.loads((g / f"scalars_{aid}.json").read_text())
+        report(f"beats.{aid}.minute", int(sc["minute"] != d["window_minute"]), 1, f"{sc['minute']} vs {d['window_minute']}")
+        for k, ko in (("win_rmssd", "window_rmssd"), ("session_rmssd", "session_rmssd")):
+            report(f"beats.{aid}.{k}", int(not np.isclose(sc[k], d[ko], rtol=1e-9)), 1, f"{sc[k]:.6g} vs {d[ko]:.6g}")
+        for k in ("sd1", "sd2"):
+            report(f"beats.{aid}.{k}", int(not np.isclose(sc[k], d["poincare"][k], rtol=1e-9)), 1, f"{sc[k]:.6g} vs {d['poincare'][k]:.6g}")
+        spec = pl.read_parquet(g / f"spectrum_{aid}.parquet")
+        report(f"beats.{aid}.spectrum", int(not np.allclose(spec["p"].to_numpy(), np.array(d["spectrum"]["p"]), rtol=1e-6, atol=1e-9)), 300)
+        gb = pl.read_parquet(g / f"beats_{aid}.parquet")
+        report(f"beats.{aid}.rows", abs(gb.height - len(d["beats"]["num"]["rr"])), gb.height)
+        gw = pl.read_parquet(g / f"window_{aid}.parquet")
+        report(f"beats.{aid}.window rows", abs(gw.height - d["window"]["n"]), gw.height)
 
 
 if __name__ == "__main__":

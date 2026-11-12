@@ -1,8 +1,9 @@
 //! The engine's entry point: a `Lab` holds the data, labels and settings, and runs jobs described as JSON.
 
 use crate::data::{Data, Series, Table};
-use crate::hrv4t;
+use crate::dfa::Windows;
 use crate::labels::{Label, Proposal, Settings};
+use crate::{beats, dfa, hrv4t};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -32,6 +33,21 @@ pub enum Job {
         #[serde(default = "d_ks")]
         k_swc: f64,
     },
+    Sessions,
+    Beats {
+        id: String,
+        #[serde(default)]
+        window_min: Option<usize>,
+    },
+    /// DFA a1 windows, thresholds, history and durability for every recording
+    Dfa,
+}
+
+fn json<T: serde::Serialize>(v: &T) -> Result<JobResult, String> {
+    Ok(JobResult {
+        json: serde_json::to_string(v).map_err(|e| e.to_string())?,
+        arrays: vec![],
+    })
 }
 
 fn d_range() -> usize {
@@ -51,6 +67,7 @@ pub struct Lab {
     pub proposals: Vec<Proposal>,
     pub settings: Settings,
     cache: BTreeMap<String, String>,
+    a1_cache: BTreeMap<String, Windows>,
 }
 
 impl Lab {
@@ -75,6 +92,7 @@ impl Lab {
     }
     pub fn load_rr(&mut self, id: &str, rr: Vec<f64>) {
         self.data.rr.insert(id.to_string(), rr);
+        self.a1_cache.remove(id);
         self.cache.clear();
     }
     pub fn set_labels(&mut self, labels: Vec<Label>) {
@@ -111,6 +129,12 @@ impl Lab {
                     arrays: vec![],
                 }
             }
+            Job::Sessions => json(&beats::sessions(&self.data))?,
+            Job::Beats { id, window_min } => json(
+                &beats::detail(&self.data, &id, window_min)
+                    .ok_or_else(|| format!("no beat intervals for {id}"))?,
+            )?,
+            Job::Dfa => json(&dfa::a1(&self.data, &mut self.a1_cache))?,
         };
         if res.arrays.is_empty() {
             self.cache.insert(job_json.to_string(), res.json.clone());
