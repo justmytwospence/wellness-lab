@@ -404,8 +404,16 @@ struct UndoIn {
 }
 
 /// Take back an answer: the proposal reopens and the label it created (if any) is deleted.
-async fn undo(State(s): State<Arc<AppState>>, Path(id): Path<String>, body: Bytes) -> ApiResult<Json<Value>> {
-    let u: UndoIn = if body.is_empty() { UndoIn::default() } else { parse(&body)? };
+async fn undo(
+    State(s): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> ApiResult<Json<Value>> {
+    let u: UndoIn = if body.is_empty() {
+        UndoIn::default()
+    } else {
+        parse(&body)?
+    };
     let mut p = s.store.proposal(&id)?.ok_or_else(|| missing("proposal"))?;
     p.status = ProposalStatus::Open;
     p.answered_at = None;

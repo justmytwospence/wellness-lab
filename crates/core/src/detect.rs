@@ -186,7 +186,7 @@ pub fn detect_with(
     }
     let el = baseline(&nt.col("hr_early_late"), &days, &excluded, &spec);
     let ctx = Ctx {
-        nt: &nt,
+        nt,
         days: days.clone(),
         centers,
         el_center: el.center,

@@ -60,7 +60,7 @@ async function load(): Promise<Manifest | null> {
   }
   for (const p of rr) {
     const c = await get(p);
-    const id = p.replace(/^rr\//, '').replace(/\.parquet$/, '');
+    const id = p.replace(/^rr\//, '').replace(/\.parquet$/, '').replace(/^garmin-/, '');
     next.loadRr(id, Float32Array.from(c.numeric[c.names.indexOf('rr')]!));
     tick(p);
   }

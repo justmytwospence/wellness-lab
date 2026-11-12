@@ -30,19 +30,28 @@ impl Default for Lab {
 impl Lab {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Lab {
-        Lab { inner: CoreLab::new() }
+        Lab {
+            inner: CoreLab::new(),
+        }
     }
 
     /// Replace a table. `numeric[i]` is the column `numeric_names[i]` (NaN for missing); `strings_json` is
     /// `{column: (string|null)[]}`.
     #[wasm_bindgen(js_name = loadTable)]
-    pub fn load_table(&mut self, name: &str, numeric_names: Vec<String>, numeric: Vec<Float64Array>, strings_json: &str) -> Result<(), JsValue> {
+    pub fn load_table(
+        &mut self,
+        name: &str,
+        numeric_names: Vec<String>,
+        numeric: Vec<Float64Array>,
+        strings_json: &str,
+    ) -> Result<(), JsValue> {
         let mut t = Table::new(0);
         for (n, a) in numeric_names.iter().zip(numeric.iter()) {
             t.num.insert(n.clone(), a.to_vec());
             t.n = a.length() as usize;
         }
-        let strings: BTreeMap<String, Vec<Option<String>>> = serde_json::from_str(strings_json).map_err(jserr)?;
+        let strings: BTreeMap<String, Vec<Option<String>>> =
+            serde_json::from_str(strings_json).map_err(jserr)?;
         for (n, v) in strings {
             t.n = t.n.max(v.len());
             t.txt.insert(n, v);
@@ -57,8 +66,17 @@ impl Lab {
     /// Replace a series. `t` is Unix ms as float64 (exact below 2^53); `col_names[i]` names `cols[i]` (`v` first, then
     /// whatever the schema lists: `q`, `conf`, `mode`, `intensity`, `day`, `v2`). NaN is missing.
     #[wasm_bindgen(js_name = loadSeries)]
-    pub fn load_series(&mut self, name: &str, t: Float64Array, col_names: Vec<String>, cols: Vec<Float64Array>) {
-        let mut s = Series { t: t.to_vec().into_iter().map(|t| t as i64).collect(), ..Default::default() };
+    pub fn load_series(
+        &mut self,
+        name: &str,
+        t: Float64Array,
+        col_names: Vec<String>,
+        cols: Vec<Float64Array>,
+    ) {
+        let mut s = Series {
+            t: t.to_vec().into_iter().map(|t| t as i64).collect(),
+            ..Default::default()
+        };
         for (n, c) in col_names.into_iter().zip(cols) {
             s.cols.insert(n, c.to_vec());
         }
@@ -67,24 +85,28 @@ impl Lab {
 
     #[wasm_bindgen(js_name = loadRr)]
     pub fn load_rr(&mut self, id: &str, rr: Float32Array) {
-        self.inner.load_rr(id, rr.to_vec().into_iter().map(f64::from).collect());
+        self.inner
+            .load_rr(id, rr.to_vec().into_iter().map(f64::from).collect());
     }
 
     #[wasm_bindgen(js_name = setLabels)]
     pub fn set_labels(&mut self, json: &str) -> Result<(), JsValue> {
-        self.inner.set_labels(serde_json::from_str(json).map_err(jserr)?);
+        self.inner
+            .set_labels(serde_json::from_str(json).map_err(jserr)?);
         Ok(())
     }
 
     #[wasm_bindgen(js_name = setProposals)]
     pub fn set_proposals(&mut self, json: &str) -> Result<(), JsValue> {
-        self.inner.set_proposals(serde_json::from_str(json).map_err(jserr)?);
+        self.inner
+            .set_proposals(serde_json::from_str(json).map_err(jserr)?);
         Ok(())
     }
 
     #[wasm_bindgen(js_name = setSettings)]
     pub fn set_settings(&mut self, json: &str) -> Result<(), JsValue> {
-        self.inner.set_settings(serde_json::from_str(json).map_err(jserr)?);
+        self.inner
+            .set_settings(serde_json::from_str(json).map_err(jserr)?);
         Ok(())
     }
 
@@ -100,7 +122,12 @@ pub struct RunResult {
 
 impl RunResult {
     fn get(&self, name: &str) -> Result<&ArrayData, JsValue> {
-        self.r.arrays.iter().find(|a| a.0 == name).map(|a| &a.1).ok_or_else(|| jserr(format!("no array {name}")))
+        self.r
+            .arrays
+            .iter()
+            .find(|a| a.0 == name)
+            .map(|a| &a.1)
+            .ok_or_else(|| jserr(format!("no array {name}")))
     }
 }
 
@@ -110,7 +137,11 @@ impl RunResult {
         self.r.json.clone()
     }
     pub fn names(&self) -> Array {
-        self.r.arrays.iter().map(|a| JsValue::from_str(&a.0)).collect()
+        self.r
+            .arrays
+            .iter()
+            .map(|a| JsValue::from_str(&a.0))
+            .collect()
     }
     pub fn f64(&self, name: &str) -> Result<Float64Array, JsValue> {
         match self.get(name)? {
@@ -184,13 +215,17 @@ impl Default for ExportBuilder {
 impl ExportBuilder {
     #[wasm_bindgen(constructor)]
     pub fn new() -> ExportBuilder {
-        ExportBuilder { inner: Some(FitBuilder::new()) }
+        ExportBuilder {
+            inner: Some(FitBuilder::new()),
+        }
     }
 
     #[wasm_bindgen(js_name = addJson)]
     pub fn add_json(&mut self, path: &str, text: &str) -> Result<String, JsValue> {
         let b = self.inner.as_mut().ok_or_else(|| jserr("finished"))?;
-        b.add_json(path, text).map(|k| k.as_str().to_string()).map_err(jserr)
+        b.add_json(path, text)
+            .map(|k| k.as_str().to_string())
+            .map_err(jserr)
     }
 
     /// Throws `json-first` when an activity file arrives before the JSON summaries.
@@ -207,7 +242,10 @@ impl ExportBuilder {
     pub fn finish(&mut self) -> Result<ExportResult, JsValue> {
         let b = self.inner.take().ok_or_else(|| jserr("finished"))?;
         let (tables, report) = b.finish();
-        Ok(ExportResult { tables, report: serde_json::to_string(&report).map_err(jserr)? })
+        Ok(ExportResult {
+            tables,
+            report: serde_json::to_string(&report).map_err(jserr)?,
+        })
     }
 }
 
@@ -224,14 +262,22 @@ fn columns<'a>(t: &'a Tables, name: &str) -> Option<&'a Columns> {
 #[wasm_bindgen]
 impl ExportResult {
     pub fn tables(&self) -> Array {
-        ["days", "sleeps", "stages", "activities", "tags", "devices"].iter().map(|s| JsValue::from_str(s)).collect()
+        ["days", "sleeps", "stages", "activities", "tags", "devices"]
+            .iter()
+            .map(|s| JsValue::from_str(s))
+            .collect()
     }
     pub fn columns(&self, table: &str) -> Array {
-        columns(&self.tables, table).map(|c| c.iter().map(|(n, _)| JsValue::from_str(n)).collect()).unwrap_or_default()
+        columns(&self.tables, table)
+            .map(|c| c.iter().map(|(n, _)| JsValue::from_str(n)).collect())
+            .unwrap_or_default()
     }
     /// A numeric column; NaN for null. String columns give an empty array.
     pub fn numeric(&self, table: &str, col: &str) -> Float64Array {
-        let v = columns(&self.tables, table).and_then(|c| c.iter().find(|(n, _)| n == col)).map(|(_, c)| c.f64s()).unwrap_or_default();
+        let v = columns(&self.tables, table)
+            .and_then(|c| c.iter().find(|(n, _)| n == col))
+            .map(|(_, c)| c.f64s())
+            .unwrap_or_default();
         Float64Array::from(v.as_slice())
     }
     /// A string column as a JSON array of string or null.
@@ -242,7 +288,12 @@ impl ExportResult {
         }
     }
     pub fn series(&self) -> Array {
-        self.tables.series.iter().filter(|(_, c)| !c.is_empty() && c[0].1.len() > 0).map(|(n, _)| JsValue::from_str(n)).collect()
+        self.tables
+            .series
+            .iter()
+            .filter(|(_, c)| !c.is_empty() && !c[0].1.is_empty())
+            .map(|(n, _)| JsValue::from_str(n))
+            .collect()
     }
     #[wasm_bindgen(js_name = seriesColumn)]
     pub fn series_column(&self, name: &str, col: &str) -> Float64Array {
@@ -250,11 +301,21 @@ impl ExportResult {
     }
     #[wasm_bindgen(js_name = rrIds)]
     pub fn rr_ids(&self) -> Array {
-        self.tables.rr.keys().map(|k| JsValue::from_str(&k.replace("garmin:", "garmin-"))).collect()
+        self.tables
+            .rr
+            .keys()
+            .map(|k| JsValue::from_str(&k.replace("garmin:", "garmin-")))
+            .collect()
     }
     pub fn rr(&self, id: &str) -> Float32Array {
         let key = id.replacen("garmin-", "garmin:", 1);
-        Float32Array::from(self.tables.rr.get(&key).map(|v| v.as_slice()).unwrap_or(&[]))
+        Float32Array::from(
+            self.tables
+                .rr
+                .get(&key)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]),
+        )
     }
     pub fn report(&self) -> String {
         self.report.clone()
@@ -265,5 +326,8 @@ impl ExportResult {
 #[wasm_bindgen(js_name = synthExport)]
 pub fn synth_export(seed: f64, days: i32) -> ExportResult {
     let (d, _) = wellness_lab_core::synth::synth(seed as u64, days, 19_723);
-    ExportResult { tables: Tables::from_data(&d), report: "{}".into() }
+    ExportResult {
+        tables: Tables::from_data(&d),
+        report: "{}".into(),
+    }
 }

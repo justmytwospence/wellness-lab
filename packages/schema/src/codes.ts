@@ -45,3 +45,10 @@ export const ADVICE: Record<string, { label: string; text: string; color: string
   easy: { label: 'Keep it easy', text: 'Lower than usual for a few nights: keep today easy.', color: '#ff9a5c' },
   back_off: { label: 'Back off', text: 'Well below your range: back off and prioritise recovery.', color: '#ff6b6b' },
 };
+
+/** The engine's advice label ("normal", "high", "watch", "keep it easy", "back off") as an ADVICE entry. */
+export function adviceOf(label: string | null | undefined) {
+  const k = (label ?? 'normal').toLowerCase().replace(/\s+/g, '_');
+  const key = k === 'keep_it_easy' ? 'easy' : k;
+  return ADVICE[key] ?? ADVICE.normal!;
+}

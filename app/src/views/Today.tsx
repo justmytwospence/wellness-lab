@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ADVICE, kindInfo, type Table } from '@wl/schema';
+import { adviceOf, kindInfo, type Table } from '@wl/schema';
 import { PAL, clock, duration, num, sequential, signed, why, confidence, whatIf, isoDay, weekday } from '@wl/views';
 import { useApp } from '../lib/app';
 import { useJob } from '../lib/useJob';
@@ -78,7 +78,7 @@ export default function Today() {
     );
   }
   const h = hrv?.headline as Record<string, any> | undefined;
-  const adv = h ? ADVICE[(h.advice as string) ?? 'normal'] : undefined;
+  const adv = h ? adviceOf(h.advice as string) : undefined;
   const open = state.proposals.filter((p) => p.status === 'open' && p.asked).slice(0, 3);
   const spark = hrv?.spark as Table | undefined;
   return (
