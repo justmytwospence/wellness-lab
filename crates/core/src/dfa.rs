@@ -155,13 +155,16 @@ pub fn windows(rr_raw: &[f64], win_s: f64, step_s: f64) -> Windows {
         let (t_raw, t_cor) = (cum(&seg), cum(&corr));
         let mut start = 0.0;
         while start + win_s <= *t_cor.last().unwrap() {
-            let w: Vec<f64> = (0..corr.len())
-                .filter(|&i| t_cor[i] > start && t_cor[i] <= start + win_s)
-                .map(|i| corr[i])
-                .collect();
-            let sel: Vec<usize> = (0..seg.len())
-                .filter(|&i| t_raw[i] > start && t_raw[i] <= start + win_s)
-                .collect();
+            let (a, b) = (
+                t_cor.partition_point(|&t| t <= start),
+                t_cor.partition_point(|&t| t <= start + win_s),
+            );
+            let w: Vec<f64> = corr[a..b].to_vec();
+            let (a, b) = (
+                t_raw.partition_point(|&t| t <= start),
+                t_raw.partition_point(|&t| t <= start + win_s),
+            );
+            let sel: Vec<usize> = (a..b).collect();
             if w.len() >= 60 {
                 out.t_s.push(t_off + start + win_s);
                 out.hr.push(60000.0 / stats::mean(&w));

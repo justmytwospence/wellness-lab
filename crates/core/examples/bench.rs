@@ -18,6 +18,8 @@ fn main() {
         r#"{"kind":"circadian","from":19723,"to":20452}"#,
         r#"{"kind":"event_study","label_kind":"illness","metrics":["hr_min30","ln_rmssd"],"n_boot":200}"#,
         r#"{"kind":"teardown"}"#,
+        r#"{"kind":"dfa"}"#,
+        r#"{"kind":"sessions"}"#,
         r#"{"kind":"dfm"}"#,
     ] {
         let t = Instant::now();

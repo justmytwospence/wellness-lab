@@ -8,7 +8,7 @@ use crate::labels::Settings;
 use crate::math::Det;
 use crate::nights::{main_sleeps, night_features};
 use crate::stats::{self, mean, median, ols};
-use crate::time::{circ_diff_hours, circ_mean_hours, MS_DAY, MS_MIN};
+use crate::time::{circ_diff_hours, circ_mean_hours, MS_MIN};
 use std::f64::consts::{PI, TAU};
 
 pub const MIN_DAY: usize = 1440;
@@ -108,36 +108,33 @@ pub fn grid(data: &Data, from: i32, to: i32) -> Grid {
         data.sleeps.col("kind"),
     );
     let _ = sk;
+    // minutes of the range an interval covers, clipped to the range; none when it lies wholly outside
+    let span = |t0: f64, t1: f64| -> Option<(usize, usize)> {
+        if !t0.is_finite() || !t1.is_finite() {
+            return None;
+        }
+        let raw = |t: f64| {
+            let t = t as i64;
+            let local = t + data.offset_at(t) as i64 * MS_MIN;
+            local.div_euclid(MS_MIN) - from as i64 * MIN_DAY as i64
+        };
+        let (a, b) = (raw(t0), raw(t1));
+        if b < 0 || a >= n as i64 {
+            return None;
+        }
+        Some((a.max(0) as usize, b.min(n as i64 - 1) as usize))
+    };
     for i in 0..data.sleeps.n {
-        if let (Some(a), Some(b)) = (
-            minute_index(data, ss[i] as i64, from, days)
-                .or(Some(0))
-                .filter(|_| ss[i].is_finite()),
-            minute_index(data, se[i] as i64, from, days)
-                .or(Some(n - 1))
-                .filter(|_| se[i].is_finite()),
-        ) {
-            if (se[i] as i64) >= (from as i64 - 1) * MS_DAY
-                && (ss[i] as i64) <= (to as i64 + 2) * MS_DAY
-            {
-                for m in a..=b.min(n - 1) {
-                    g.asleep[m] = true;
-                }
+        if let Some((a, b)) = span(ss[i], se[i]) {
+            for m in a..=b {
+                g.asleep[m] = true;
             }
         }
     }
     let (as_, ae) = (data.activities.col("start"), data.activities.col("end"));
     for i in 0..data.activities.n {
-        let (Some(a), Some(b)) = (
-            minute_index(data, as_[i] as i64 - 30 * MS_MIN, from, days).or(Some(0)),
-            minute_index(data, ae[i] as i64 + 30 * MS_MIN, from, days).or(Some(n - 1)),
-        ) else {
-            continue;
-        };
-        if (ae[i] as i64) >= (from as i64 - 1) * MS_DAY
-            && (as_[i] as i64) <= (to as i64 + 2) * MS_DAY
-        {
-            for m in a..=b.min(n - 1) {
+        if let Some((a, b)) = span(as_[i] - 30.0 * MS_MIN as f64, ae[i] + 30.0 * MS_MIN as f64) {
+            for m in a..=b {
                 g.busy[m] = true;
             }
         }
@@ -714,6 +711,17 @@ mod tests {
         assert!(mean(&acro) > 8.0 && mean(&acro) < 22.0, "{}", mean(&acro));
         let hr = hr_rhythm(&g);
         assert!(hr.n > 10 && mean(&hr.col("amp")) > 0.0);
+    }
+
+    #[test]
+    fn a_range_after_the_sleeps_is_not_all_asleep() {
+        let (d, _) = synth(5, 120, 19_723);
+        let g = grid(&d, 19_723 + 60, 19_723 + 100);
+        let asleep = g.asleep.iter().filter(|&&a| a).count() as f64 / g.asleep.len() as f64;
+        assert!((0.2..0.45).contains(&asleep), "{asleep}");
+        let busy = g.busy.iter().filter(|&&a| a).count() as f64 / g.busy.len() as f64;
+        assert!(busy < 0.3, "{busy}");
+        assert!(hr_rhythm(&g).n > 5);
     }
 
     #[test]

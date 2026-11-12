@@ -398,6 +398,33 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
     a.txt.insert("sport".into(), vec![Some("run".into()); na]);
     a.set("rr_beats", vec![0.0; na]);
     a.n = na;
+    // beat intervals for every eighth activity: heart rate ramps from easy to hard over the hour and the beat-to-beat
+    // correlation falls with it (a long-memory process when easy, nearly white when hard), so alpha-1 sweeps 1.3 to 0.4
+    let mut rr_rng = Rng::new(seed ^ 0xBEA7);
+    let mut beats = vec![0.0; na];
+    for (k, b) in beats.iter_mut().enumerate().filter(|(k, _)| k % 4 == 3) {
+        let (mut x, mut t, mut rr) = (0.0f64, 0.0f64, Vec::<f64>::new());
+        while t < 3600.0 {
+            let u = t / 3600.0;
+            let hr = 105.0 + 75.0 * u;
+            let phi = 0.96 * (1.0 - u).powf(0.8);
+            x = phi * x + (1.0 - phi * phi).sqrt() * rr_rng.normal();
+            let sigma = 45.0 - 35.0 * u;
+            let v = (60_000.0 / hr + sigma * x).clamp(300.0, 1500.0);
+            rr.push(v.round());
+            t += v / 1000.0;
+        }
+        *b = rr.len() as f64;
+        if let Some(Some(id)) = a.txt.get("id").map(|v| v[k].clone()) {
+            data.rr
+                .insert(id.trim_start_matches("garmin:").to_string(), rr);
+        }
+    }
+    a.set("rr_beats", beats);
+    a.txt.insert(
+        "name".into(),
+        (0..na).map(|k| Some(format!("Run {}", k + 1))).collect(),
+    );
     data.days = days_t;
     data.sleeps = sleeps;
     data.stages = stages;

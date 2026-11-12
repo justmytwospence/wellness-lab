@@ -67,12 +67,14 @@ pub fn mad(x: &[f64]) -> f64 {
 
 /// polars' default `quantile` ("nearest"): the value at `round((n - 1) * q)` of the sorted values.
 pub fn quantile_nearest(x: &[f64], q: f64) -> f64 {
-    let v = sorted(x);
+    let mut v: Vec<f64> = x.iter().copied().filter(|v| !v.is_nan()).collect();
     if v.is_empty() {
         return f64::NAN;
     }
-    let idx = ((v.len() - 1) as f64 * q).round() as usize;
-    v[idx.min(v.len() - 1)]
+    let idx = (((v.len() - 1) as f64 * q).round() as usize).min(v.len() - 1);
+    // selection, not a full sort: the value at `idx` of the sorted order
+    *v.select_nth_unstable_by(idx, |a, b| a.partial_cmp(b).unwrap())
+        .1
 }
 
 /// numpy's default (linear interpolation) quantile.
