@@ -77,7 +77,7 @@ fn spacing_min(t: &[i64]) -> f64 {
     median(&d).max(1.0)
 }
 
-fn nearest_value(s: &Series, t: i64, within_ms: i64) -> f64 {
+pub fn nearest_value(s: &Series, t: i64, within_ms: i64) -> f64 {
     let i = s.t.partition_point(|&x| x < t);
     let mut best = (f64::INFINITY, f64::NAN);
     for j in [i.wrapping_sub(1), i] {
