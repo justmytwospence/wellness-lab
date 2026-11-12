@@ -1,5 +1,19 @@
-target
-node_modules
-.local
+# Keep the build context to sources: dependencies and build output are rebuilt in the image.
 .git
-app/dist
+.github
+.worktrees
+.local
+.agents
+.claude
+**/target
+**/node_modules
+**/dist
+**/pkg
+**/.venv
+**/__pycache__
+app/test-results
+app/playwright-report
+app/e2e/.fixtures
+docs/screenshots
+tools/goldens
+*.whl

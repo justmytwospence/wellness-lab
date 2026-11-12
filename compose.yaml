@@ -1,0 +1,45 @@
+# Wellness Lab, standalone (no garmin-mcp).
+#
+# Data comes from a Garmin account export (Garmin Connect > Account > Data Management > Export Your Data).
+# Put the zip in ./import, then import it once (and again whenever you download a newer export):
+#
+#   mkdir -p import && cp ~/Downloads/<export>.zip import/garmin-export.zip
+#   docker compose run --rm wellness-lab import-export /import/garmin-export.zip
+#   docker compose up -d
+#
+# Then open http://localhost:8080 and sign in with LAB_TOKEN.
+#
+# Next to garmin-mcp, use its `wellness-lab` profile instead (docs/self-hosting.md): it syncs on its own.
+# The image runs as user 10001; the named volume below is created with that owner. If you bind-mount a
+# host directory at /data instead, make it writable by 10001.
+#
+# Settings go in a .env file next to this one:
+#   LAB_TOKEN           bearer token for the app, the API and /mcp (openssl rand -hex 32); required in practice
+#   LAB_PUBLIC_URL      where you reach the lab (https://lab.example.com), for links in notifications
+#   NTFY_URL            an ntfy topic URL for questions about episodes (optional)
+#   NOTIFY_WEBHOOK_URL  a webhook that receives the same questions as JSON (optional)
+#   WELLNESS_LAB_VERSION, WELLNESS_LAB_PORT, WELLNESS_LAB_MEMORY
+
+services:
+  wellness-lab:
+    image: ghcr.io/justmytwospence/wellness-lab:${WELLNESS_LAB_VERSION:-0}
+    restart: unless-stopped
+    environment:
+      LAB_TOKEN: ${LAB_TOKEN:-}
+      LAB_PUBLIC_URL: ${LAB_PUBLIC_URL:-}
+      NTFY_URL: ${NTFY_URL:-}
+      NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
+    volumes:
+      - wellness-lab-data:/data
+      - ./import:/import:ro
+    ports:
+      - "${WELLNESS_LAB_PORT:-8080}:8080"
+    deploy:
+      resources:
+        limits:
+          memory: ${WELLNESS_LAB_MEMORY:-1024M}
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  wellness-lab-data:
