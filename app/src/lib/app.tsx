@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { EngineClient } from '@wl/engine';
 import { LocalStateStore, ServerStateStore, type Answer, type StateStore } from '@wl/store';
-import { DEFAULT_SETTINGS, type Label, type Manifest, type Registry, type Settings, type State, type Table } from '@wl/schema';
+import { DEFAULT_SETTINGS, type ExperimentDef, type Label, type Manifest, type Registry, type Settings, type State, type Table } from '@wl/schema';
 import { parseRange, type Range } from '@wl/views';
 import { LAB_EMPTY } from './util';
 import { useParam } from './router';
@@ -32,6 +32,9 @@ export interface AppCtx {
   updateLabel(l: Label): Promise<void>;
   deleteLabel(id: string): Promise<void>;
   saveSettings(s: Settings): Promise<void>;
+  saveExperiment(e: ExperimentDef): Promise<void>;
+  deleteExperiment(id: string): Promise<void>;
+  setAdherence(id: string, day: number, adherent: boolean): Promise<void>;
   refreshData(): Promise<void>;
   loadDemo(): Promise<void>;
   syncNow(): Promise<void>;
@@ -199,6 +202,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateLabel: (l) => wrap(() => storeRef.current.updateLabel(l)),
     deleteLabel: (id) => wrap(() => storeRef.current.deleteLabel(id)),
     saveSettings: (s) => wrap(() => storeRef.current.saveSettings(s)),
+    saveExperiment: (e) => wrap(() => storeRef.current.saveExperiment(e)),
+    deleteExperiment: (id) => wrap(() => storeRef.current.deleteExperiment(id)),
+    setAdherence: (id, day, adherent) => wrap(() => storeRef.current.setAdherence(id, day, adherent)),
     refreshData, loadDemo, syncNow, toast, toasts,
     ui: { palette, help, method, setPalette, setHelp, setMethod },
   };
