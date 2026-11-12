@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "types": ["vite/client"] },
+  "include": ["src", "e2e", "vite.config.ts", "../packages/*/src", "../schema"],
+  "exclude": ["../packages/**/*.test.ts"]
+}

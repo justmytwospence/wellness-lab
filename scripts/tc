@@ -2,7 +2,9 @@
 # Run a command in the wellness-lab toolchain container (Rust, wasm-pack, maturin, Node 24, uv, Playwright).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-docker build -q -t wellness-lab-toolchain -f docker/toolchain.Dockerfile docker >/dev/null
+if [ -n "${TC_REBUILD:-}" ] || ! docker image inspect wellness-lab-toolchain >/dev/null 2>&1; then
+  docker build -q -t wellness-lab-toolchain -f docker/toolchain.Dockerfile docker >/dev/null
+fi
 tty=(); [ -t 0 ] && tty=(-t)
 mkdir -p .local/home .local/cargo .local/npm .local/uv
 # shellcheck disable=SC2086

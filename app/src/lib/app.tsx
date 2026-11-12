@@ -1,0 +1,207 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { EngineClient } from '@wl/engine';
+import { LocalStateStore, ServerStateStore, type Answer, type StateStore } from '@wl/store';
+import { DEFAULT_SETTINGS, type Label, type Manifest, type Registry, type Settings, type State, type Table } from '@wl/schema';
+import { parseRange, type Range } from '@wl/views';
+import { LAB_EMPTY } from './util';
+import { useParam } from './router';
+
+export type Mode = 'booting' | 'local' | 'server';
+export interface Toast { id: number; text: string; undo?: () => void }
+
+export interface AppCtx {
+  engine: EngineClient;
+  mode: Mode;
+  needsLogin: boolean;
+  state: State;
+  manifest: Manifest | null;
+  /** Bumps whenever data or state change: effects that run jobs depend on it. */
+  version: number;
+  loading: { done: number; total: number } | null;
+  demo: boolean;
+  registry: Registry | null;
+  lastDay: number;
+  firstDay: number;
+  range: Range;
+  rangeText: string;
+  setRangeText(s: string): void;
+  today: number;
+  store: StateStore;
+  answer(id: string, a: Answer, label?: Partial<Label>): Promise<void>;
+  saveLabel(l: Partial<Label> & Pick<Label, 'kind' | 'start_day' | 'end_day'>): Promise<void>;
+  updateLabel(l: Label): Promise<void>;
+  deleteLabel(id: string): Promise<void>;
+  saveSettings(s: Settings): Promise<void>;
+  refreshData(): Promise<void>;
+  loadDemo(): Promise<void>;
+  syncNow(): Promise<void>;
+  toast(text: string, undo?: () => void): void;
+  toasts: Toast[];
+  nights: Table | null;
+  ui: { palette: boolean; help: boolean; method: string | null; setPalette(b: boolean): void; setHelp(b: boolean): void; setMethod(id: string | null): void };
+}
+
+const Ctx = createContext<AppCtx>(null as never);
+export const useApp = () => useContext(Ctx);
+
+const emptyState = (): State => ({ labels: [], proposals: [], settings: { ...DEFAULT_SETTINGS }, experiments: [], adherence: {}, revision: 0 });
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  const engine = useMemo(() => new EngineClient(), []);
+  const [mode, setMode] = useState<Mode>('booting');
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [store, setStore] = useState<StateStore>(() => new LocalStateStore());
+  const [state, setState] = useState<State>(emptyState());
+  const [manifest, setManifest] = useState<Manifest | null>(null);
+  const [version, setVersion] = useState(0);
+  const [loading, setLoading] = useState<{ done: number; total: number } | null>(null);
+  const [demo, setDemo] = useState(false);
+  const [registry, setRegistry] = useState<Registry | null>(null);
+  const [nights, setNights] = useState<Table | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [palette, setPalette] = useState(false);
+  const [help, setHelp] = useState(false);
+  const [method, setMethod] = useState<string | null>(null);
+  const [rangeText, setRangeText] = useParam('range', '180d');
+  const storeRef = useRef(store);
+  storeRef.current = store;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const toast = useCallback((text: string, undo?: () => void) => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t, { id, text, undo }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), undo ? 10_000 : 4000);
+  }, []);
+
+  /** Push state into the engine, refresh the night table, and (locally) detect episodes. */
+  const settle = useCallback(async (s: State, detect: boolean) => {
+    await engine.setState(s);
+    const n = (await engine.run({ kind: 'nights' })) as unknown as Table;
+    setNights(n);
+    if (detect && n.n > 30 && mode !== 'server') {
+      const d = await engine.run({ kind: 'detect' });
+      const st = storeRef.current;
+      await st.saveProposals(d.proposals);
+      // certain exposures (time zone, altitude) are labelled on their own, with a one-click undo
+      let cur = await st.load();
+      for (const p of cur.proposals.filter((p) => p.auto && p.status === 'open')) await st.answer(p.id, 'confirm');
+      cur = await st.load();
+      await engine.setState(cur);
+      setState(cur);
+      setVersion((v) => v + 1);
+      return;
+    }
+    setState(s);
+    setVersion((v) => v + 1);
+  }, [engine, mode]);
+
+  const refreshData = useCallback(async () => {
+    engine.onProgress = (p) => setLoading({ done: p.done, total: p.total });
+    setLoading({ done: 0, total: 1 });
+    try {
+      const m = await engine.load();
+      setManifest(m);
+      setDemo(false);
+      const s = await storeRef.current.load();
+      await settle(s, true);
+    } finally {
+      setLoading(null);
+    }
+  }, [engine, settle]);
+
+  const loadDemo = useCallback(async () => {
+    const labels = await engine.demo(42, 730);
+    setDemo(true);
+    setManifest(null);
+    // demo labels are real ground truth for the demo's detector; keep them in memory only
+    const s: State = { ...emptyState(), labels: labels.filter((l) => l.kind !== 'illness' || l.start_day % 2 === 0) };
+    await engine.setState(s);
+    const n = (await engine.run({ kind: 'nights' })) as unknown as Table;
+    setNights(n);
+    const d = await engine.run({ kind: 'detect' });
+    const s2: State = { ...s, proposals: d.proposals };
+    await engine.setState(s2);
+    setState(s2);
+    setVersion((v) => v + 1);
+  }, [engine]);
+
+  // boot: server or local mode, registry, data
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      let m: Mode = 'local';
+      try {
+        const r = await fetch('/api/info', { credentials: 'same-origin' });
+        if (r.ok && (r.headers.get('content-type') ?? '').includes('json')) m = 'server';
+        else if (r.status === 401) { m = 'server'; setNeedsLogin(true); }
+      } catch { /* local mode */ }
+      if (dead) return;
+      const st = m === 'server' ? new ServerStateStore() : new LocalStateStore();
+      storeRef.current = st;
+      setStore(st);
+      setMode(m);
+      engine.run({ kind: 'registry' }).then((r) => !dead && setRegistry(r as unknown as Registry)).catch(() => {});
+    })();
+    return () => { dead = true; };
+  }, [engine]);
+
+  useEffect(() => {
+    if (mode === 'booting' || needsLogin) return;
+    (async () => {
+      if (mode === 'server') {
+        try {
+          const { pullWellness } = await import('@wl/ingest');
+          const { opfsFiles } = await import('@wl/ingest');
+          setLoading({ done: 0, total: 1 });
+          await pullWellness({ base: '/data/wellness-v1', files: opfsFiles, emit: (p) => setLoading({ done: p.done, total: p.total }) });
+        } catch (e) {
+          if (String((e as Error).message).includes('sign-in')) { setNeedsLogin(true); return; }
+          toast(`Could not pull data: ${(e as Error).message}`);
+        }
+      }
+      await refreshData();
+      if (new URLSearchParams(location.search).get('demo') === '1') await loadDemo();
+    })().catch((e) => toast(String((e as Error).message ?? e)));
+  }, [mode, needsLogin, refreshData, toast, loadDemo]);
+
+  const wrap = useCallback(async (f: () => Promise<unknown>) => {
+    await f();
+    const s = await storeRef.current.load();
+    await settle(s, false);
+  }, [settle]);
+
+  const answer = useCallback(async (id: string, a: Answer, label?: Partial<Label>) => {
+    const r = await storeRef.current.answer(id, a, label);
+    await wrap(async () => {});
+    const verb = { confirm: 'Confirmed', deny: 'Denied', unsure: 'Marked unsure', snooze: 'Snoozed for 7 days' }[a];
+    toast(verb, () => { void storeRef.current.undo(id, r.label?.id).then(() => wrap(async () => {})); });
+  }, [wrap, toast]);
+
+  const syncNow = useCallback(async () => {
+    if (mode === 'server') {
+      await fetch('/api/sync', { method: 'POST', credentials: 'same-origin' });
+      const { pullWellness, opfsFiles } = await import('@wl/ingest');
+      await pullWellness({ base: '/data/wellness-v1', files: opfsFiles });
+    }
+    await refreshData();
+  }, [mode, refreshData]);
+
+  const days = (nights?.num.day ?? []) as number[];
+  const lastDay = days.length ? (days[days.length - 1] as number) : Math.floor(Date.now() / 86_400_000);
+  const firstDay = days.length ? (days[0] as number) : lastDay - 365;
+  const range = parseRange(rangeText, lastDay, firstDay) ?? [lastDay - 179, lastDay];
+
+  const value: AppCtx = {
+    engine, mode, needsLogin, state, manifest, version, loading, demo, registry, lastDay, firstDay, range, rangeText, setRangeText: (s) => setRangeText(s), today: Math.floor(Date.now() / 86_400_000),
+    store, answer, nights,
+    saveLabel: (l) => wrap(() => storeRef.current.createLabel(l)),
+    updateLabel: (l) => wrap(() => storeRef.current.updateLabel(l)),
+    deleteLabel: (id) => wrap(() => storeRef.current.deleteLabel(id)),
+    saveSettings: (s) => wrap(() => storeRef.current.saveSettings(s)),
+    refreshData, loadDemo, syncNow, toast, toasts,
+    ui: { palette, help, method, setPalette, setHelp, setMethod },
+  };
+  void LAB_EMPTY;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}

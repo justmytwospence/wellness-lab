@@ -1,0 +1,1 @@
+{ "name": "@wl/engine", "version": "0.1.0", "private": true, "type": "module", "main": "src/index.ts", "dependencies": { "@wl/schema": "*", "@wl/store": "*", "hyparquet": "^1.33.0", "hyparquet-compressors": "^1.1.0" } }

@@ -1,0 +1,24 @@
+{
+  "name": "@wl/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@wl/schema": "*", "@wl/store": "*", "@wl/ingest": "*", "@wl/engine": "*", "@wl/views": "*",
+    "react": "^19.0.0", "react-dom": "^19.0.0", "uplot": "^1.6.32",
+    "d3-scale": "^4", "d3-shape": "^3", "d3-array": "^3", "d3-time-format": "^4",
+    "hyparquet": "^1.33.0", "hyparquet-writer": "^0.18.0", "hyparquet-compressors": "^1.1.0",
+    "@zip.js/zip.js": "^2.24.0", "@duckdb/duckdb-wasm": "latest", "cmdk": "^1.1.1", "lucide-react": "latest",
+    "@fontsource-variable/inter": "^5", "@fontsource/jetbrains-mono": "^5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4", "@playwright/test": "1.65.0", "typescript": "^5.7.2", "vite": "^6.0.5",
+    "@types/react": "^19", "@types/react-dom": "^19", "@types/d3-scale": "^4", "@types/d3-shape": "^3", "@types/d3-array": "^3"
+  }
+}

@@ -1,0 +1,1 @@
+{ "name": "@wl/ingest", "version": "0.1.0", "private": true, "type": "module", "main": "src/index.ts", "dependencies": { "@wl/schema": "*", "@wl/store": "*", "@zip.js/zip.js": "^2.24.0", "hyparquet-writer": "^0.18.0" } }
