@@ -27,7 +27,7 @@ const LANES: LaneCfg[] = [
   { key: 'altitude', name: 'Altitude', unit: 'm', color: PAL.violet, kind: 'line' },
 ];
 
-function Lane({ cfg, night, other, xr, onBrush, labels }: { cfg: LaneCfg; night: NightChannels; other?: { night: NightChannels; shift: number }; xr: [number, number]; onBrush(r: [number, number] | null): void; labels: { a: number; b: number; color: string }[] }) {
+function Lane({ cfg, night, other, xr, onBrush, labels, showX }: { showX: boolean; cfg: LaneCfg; night: NightChannels; other?: { night: NightChannels; shift: number }; xr: [number, number]; onBrush(r: [number, number] | null): void; labels: { a: number; b: number; color: string }[] }) {
   const ch: Chan | undefined = night.series[cfg.key] ?? (cfg.key === 'steps' ? night.series.motion : undefined);
   const off = night.utc_offset_min;
   const band = cfg.band ? (night.bands[cfg.band] as Band | undefined) : undefined;
@@ -64,7 +64,7 @@ function Lane({ cfg, night, other, xr, onBrush, labels }: { cfg: LaneCfg; night:
       series,
       legend: { show: false },
       scales: { x: { time: true, min: xr[0], max: xr[1] }, y: { range: cfg.min !== undefined ? [cfg.min, cfg.max!] : undefined } },
-      axes: [{ ...axisStyle, show: true }, { ...axisStyle, size: 44 }],
+      axes: [{ ...axisStyle, show: showX, size: showX ? 30 : 0 }, { ...axisStyle, size: 44 }],
       bands: band ? [{ series: [2, 1], fill: PAL.base + '22' }] : [],
       cursor: { drag: { x: true, y: false, setScale: false }, points: { size: 6 } },
       padding: [6, 8, 0, 0],
@@ -75,12 +75,12 @@ function Lane({ cfg, night, other, xr, onBrush, labels }: { cfg: LaneCfg; night:
     };
     return { data: [xs, ...cols] as uPlot.AlignedData, options: opts };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ch, band, night, xr[0], xr[1], other, labels]);
+  }, [ch, band, night, xr[0], xr[1], other, labels, showX]);
   if (!ch || !data || !options) return null;
   return (
     <div className="lane" data-testid={`lane-${cfg.key}`}>
       <span className="name">{cfg.name} {cfg.unit && <span className="muted">({cfg.unit})</span>}</span>
-      <UPlot options={options} data={data} height={66} sync="night" />
+      <UPlot options={options} data={data} height={showX ? 92 : 62} sync="night" />
     </div>
   );
 }
@@ -172,7 +172,7 @@ export default function Night() {
         <div className="grid2" style={{ gridTemplateColumns: 'minmax(0, 2.2fr) minmax(300px, 1fr)' }}>
           <div className="card">
             <Hypnogram night={nightD} xr={xr} onBrush={setZoom} />
-            {LANES.map((c) => <Lane key={c.key} cfg={c} night={nightD} xr={xr} onBrush={setZoom} labels={labels} other={c.key === 'hr' || c.key === 'hrv5' ? otherObj : undefined} />)}
+            {LANES.filter((c) => nightD.series[c.key] || (c.key === 'steps' && nightD.series.motion)).map((c, k, all) => <Lane showX={k === all.length - 1} key={c.key} cfg={c} night={nightD} xr={xr} onBrush={setZoom} labels={labels} other={c.key === 'hr' || c.key === 'hrv5' ? otherObj : undefined} />)}
             <div className="row muted" style={{ fontSize: 12, marginTop: 6 }}>
               <span>Drag on a lane or the stages to zoom, f to fit, double-click the stages to reset.</span>
               {STAGES.slice(0, 4).map((s) => <span key={s.code}><span style={{ color: s.color }}>{'\u25a0'}</span> {s.name}</span>)}

@@ -123,7 +123,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const n = (await engine.run({ kind: 'nights' })) as unknown as Table;
     setNights(n);
     const d = await engine.run({ kind: 'detect' });
-    const s2: State = { ...s, proposals: d.proposals };
+    // the demo keeps its labels and answers in memory, never in the browser's real state
+    const files = new Map<string, string>();
+    const mem = new LocalStateStore(async (p) => { const t = files.get(p.join('/')); return t ? (new TextEncoder().encode(t).buffer as ArrayBuffer) : null; }, async (p, t) => void files.set(p.join('/'), t));
+    for (const l of s.labels) await mem.createLabel(l);
+    await mem.saveProposals(d.proposals);
+    storeRef.current = mem;
+    setStore(mem);
+    const s2 = await mem.load();
     await engine.setState(s2);
     setState(s2);
     setVersion((v) => v + 1);

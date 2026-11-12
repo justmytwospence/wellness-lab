@@ -24,14 +24,15 @@ function useKeys() {
       if (g) {
         g = false;
         clearTimeout(timer);
+        e.stopPropagation();
         const r = ROUTES.find((x) => x.key === e.key);
         if (r) navigate(r.path.includes(':day') ? `/night/${lastDay}` : r.path);
         return;
       }
       if (e.key === 'g') { g = true; timer = setTimeout(() => (g = false), 1200); }
     };
-    window.addEventListener('keydown', on);
-    return () => window.removeEventListener('keydown', on);
+    window.addEventListener('keydown', on, true);
+    return () => window.removeEventListener('keydown', on, true);
   }, [ui, lastDay, state]);
 }
 
