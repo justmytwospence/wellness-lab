@@ -2,6 +2,7 @@
 //! second ventilatory thresholds), as in the HRV deep-dive notebook (cells a1_build, a1_thresholds, durability_chart).
 
 use crate::data::{Data, Table};
+use crate::math::Det;
 use crate::stats::{
     self, median, polyfit, quantile_nearest, rolling_median, rolling_quantile_nearest,
 };
@@ -48,9 +49,9 @@ pub fn dfa_a1(rr: &[f64]) -> f64 {
                 ss += r * r;
             }
         }
-        lf.push((ss / (boxes * n) as f64).sqrt().ln());
+        lf.push((ss / (boxes * n) as f64).sqrt().det_ln());
     }
-    let lx: Vec<f64> = scales.iter().map(|&n| (n as f64).ln()).collect();
+    let lx: Vec<f64> = scales.iter().map(|&n| (n as f64).det_ln()).collect();
     polyfit(&lx, &lf, 1, None).map(|c| c[0]).unwrap_or(f64::NAN)
 }
 

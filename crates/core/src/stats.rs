@@ -1,7 +1,8 @@
 //! Statistics with the semantics of polars and numpy, which the HRV notebook's goldens come from.
 //! NaN is a missing value: every summary skips it, and rolling windows count only the values present.
 
-use statrs::distribution::{ChiSquared, ContinuousCDF};
+use crate::math::Det;
+pub use crate::math::{chi2_sf, normal_cdf};
 
 pub fn nan_len(x: &[f64]) -> usize {
     x.iter().filter(|v| !v.is_nan()).count()
@@ -490,20 +491,6 @@ pub fn ar1(x: &[f64]) -> f64 {
     }
 }
 
-pub fn chi2_sf(x: f64, k: usize) -> f64 {
-    if k == 0 || !x.is_finite() {
-        return f64::NAN;
-    }
-    ChiSquared::new(k as f64)
-        .map(|d| 1.0 - d.cdf(x))
-        .unwrap_or(f64::NAN)
-}
-
-pub fn normal_cdf(z: f64) -> f64 {
-    use statrs::distribution::Normal;
-    Normal::new(0.0, 1.0).unwrap().cdf(z)
-}
-
 /// xoshiro256** seeded through SplitMix64.
 #[derive(Clone)]
 pub struct Rng {
@@ -547,7 +534,7 @@ impl Rng {
     pub fn normal(&mut self) -> f64 {
         let u1 = self.f64().max(1e-300);
         let u2 = self.f64();
-        (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+        (-2.0 * u1.det_ln()).sqrt() * (std::f64::consts::TAU * u2).det_cos()
     }
 }
 

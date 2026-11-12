@@ -5,6 +5,7 @@
 
 use crate::data::{Data, Table};
 use crate::labels::Settings;
+use crate::math::Det;
 use crate::nights::{main_sleeps, night_features};
 use crate::stats::{self, mean, median, ols};
 use crate::time::{circ_diff_hours, circ_mean_hours, MS_DAY, MS_MIN};
@@ -263,8 +264,8 @@ fn cosinor(x: &[f64]) -> Option<(f64, f64, f64, f64)> {
         .map(|i| {
             vec![
                 1.0,
-                (TAU * (i % 24) as f64 / 24.0).cos(),
-                (TAU * (i % 24) as f64 / 24.0).sin(),
+                (TAU * (i % 24) as f64 / 24.0).det_cos(),
+                (TAU * (i % 24) as f64 / 24.0).det_sin(),
             ]
         })
         .collect();
@@ -277,7 +278,7 @@ fn cosinor(x: &[f64]) -> Option<(f64, f64, f64, f64)> {
     Some((
         f.beta[0],
         (b1 * b1 + b2 * b2).sqrt(),
-        (b2.atan2(b1) * 24.0 / TAU).rem_euclid(24.0),
+        (b2.det_atan2(b1) * 24.0 / TAU).rem_euclid(24.0),
         f.r2,
     ))
 }
@@ -430,7 +431,7 @@ pub fn sleep_debt(nights: &Table, settings: &Settings) -> Table {
     let corr: Vec<f64> = tst.iter().map(|t| t - bias).collect();
     let n = nights.n;
     let (mut d, mut debt, mut debt14, mut need_col) = (vec![], vec![], vec![], vec![]);
-    let w: Vec<f64> = (0..14).map(|k| (-(k as f64) / 4.0).exp()).collect();
+    let w: Vec<f64> = (0..14).map(|k| (-(k as f64) / 4.0).det_exp()).collect();
     let wsum: f64 = w.iter().sum();
     for i in 13..n {
         let hist: Vec<f64> = (i.saturating_sub(90)..i)
@@ -492,7 +493,7 @@ pub fn hr_rhythm(g: &Grid) -> Table {
                 if g.hr[m].is_finite() && !g.busy[m] {
                     y.push(g.hr[m]);
                     hh.push((m % MIN_DAY) as f64 / 60.0);
-                    x.push((1.0 + g.act[m]).ln());
+                    x.push((1.0 + g.act[m]).det_ln());
                     s.push(g.asleep[m] as u8 as f64);
                 }
             }
@@ -504,14 +505,14 @@ pub fn hr_rhythm(g: &Grid) -> Table {
         let rows: Vec<Vec<f64>> = (0..y.len())
             .map(|i| {
                 let a = TAU * hh[i] / 24.0;
-                vec![1.0, a.cos(), a.sin(), x[i], s[i]]
+                vec![1.0, a.det_cos(), a.det_sin(), x[i], s[i]]
             })
             .collect();
         let Some(f) = ols(&rows, &y) else {
             continue;
         };
         let (cc, ss) = (f.beta[1], f.beta[2]);
-        let phi = (ss.atan2(cc) * 24.0 / TAU).rem_euclid(24.0);
+        let phi = (ss.det_atan2(cc) * 24.0 / TAU).rem_euclid(24.0);
         let beta = [f.beta[0], (cc * cc + ss * ss).sqrt(), f.beta[3], f.beta[4]];
         let r2 = f.r2;
         for (c, v) in cols.iter_mut().zip([
@@ -551,7 +552,7 @@ pub fn forger_dlmo(g: &Grid) -> Table {
     );
     let deriv = |s: [f64; 3], light: f64| -> [f64; 3] {
         let (x, xc, n) = (s[0], s[1], s[2]);
-        let alpha = a0 * (light / i0).powf(p);
+        let alpha = a0 * (light / i0).det_powf(p);
         let bhat = big_g * (1.0 - n) * alpha * (1.0 - 0.4 * x) * (1.0 - 0.4 * xc);
         let mu_term = mu * (xc - 4.0 / 3.0 * xc.powi(3));
         let taux_term = (24.0 / (0.99669 * taux)).powi(2) + k * bhat;

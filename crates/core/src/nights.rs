@@ -3,6 +3,7 @@
 
 use crate::data::{Data, Series, Table};
 use crate::labels::{excluded_days, Label, Settings};
+use crate::math::Det;
 use crate::stats::{self, mean, median, quantile_linear, quantile_nearest, rolling};
 use crate::time::{day_of_ms, local_hour, weekday, MS_DAY, MS_HOUR, MS_MIN};
 use serde::Serialize;
@@ -407,11 +408,11 @@ pub fn night_features(data: &Data, labels: &[Label], settings: &Settings) -> Tab
                 let m = mean(&v);
                 set("n5", i, v.len() as f64);
                 set("rmssd_mean", i, m);
-                set("ln_rmssd", i, m.ln());
+                set("ln_rmssd", i, m.det_ln());
                 set(
                     "ln_mean",
                     i,
-                    mean(&v.iter().map(|x| x.ln()).collect::<Vec<_>>()),
+                    mean(&v.iter().map(|x| x.det_ln()).collect::<Vec<_>>()),
                 );
                 set(
                     "rmssd_qmean",

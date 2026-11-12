@@ -6,6 +6,7 @@ use crate::data::Table;
 use crate::events::{event_study, Controls};
 use crate::kalman::local_level_fit;
 use crate::labels::{Label, LabelKind};
+use crate::math::Det;
 use crate::stats::{self, mean, rolling_mean, shift, std};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -124,7 +125,7 @@ pub fn bench(
         }
         let raw = nights.col(name);
         let col: Vec<f64> = if log {
-            raw.iter().map(|v| v.ln()).collect()
+            raw.iter().map(|v| v.det_ln()).collect()
         } else {
             raw.clone()
         };
@@ -168,7 +169,7 @@ pub fn bench(
             let (o, e) = (nights.col("rmssd_odd"), nights.col("rmssd_even"));
             let (lo, le): (Vec<f64>, Vec<f64>) = (0..nights.n)
                 .filter(|&i| quiet[i] && o[i] > 0.0 && e[i] > 0.0)
-                .map(|i| (o[i].ln(), e[i].ln()))
+                .map(|i| (o[i].det_ln(), e[i].det_ln()))
                 .unzip();
             r.split_half = stats::spearman_brown(stats::corr(&lo, &le));
         }

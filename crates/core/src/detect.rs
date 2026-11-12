@@ -9,6 +9,7 @@ use crate::data::{Data, Table};
 use crate::labels::{
     excluded_days, Evidence, Label, LabelKind, Proposal, ProposalStatus, Settings,
 };
+use crate::math::Det;
 use crate::nights::night_features;
 use crate::stats::{self, chi2_sf, invert, mean, median};
 use crate::time::{days_from_ymd, weekday, ymd};
@@ -472,7 +473,7 @@ pub fn detect_with(
 /// Bayesian online changepoint detection (Adams and MacKay 2007) with a Normal-Gamma model and hazard 1/250: the nights where
 /// a lasting shift most likely began, confirmed by the next 14 nights sitting more than half a standard deviation from the 28 before.
 pub fn changepoints(x: &[f64]) -> Vec<usize> {
-    use statrs::function::gamma::ln_gamma;
+    use crate::math::ln_gamma;
     let n = x.len();
     let first: Vec<f64> = x
         .iter()
@@ -504,9 +505,9 @@ pub fn changepoints(x: &[f64]) -> Vec<usize> {
             let z = (x[t] - mu[r]) / scale2.sqrt();
             let lp = ln_gamma((df + 1.0) / 2.0)
                 - ln_gamma(df / 2.0)
-                - 0.5 * (df * std::f64::consts::PI * scale2).ln()
-                - (df + 1.0) / 2.0 * (1.0 + z * z / df).ln();
-            pred.push(lp.exp());
+                - 0.5 * (df * std::f64::consts::PI * scale2).det_ln()
+                - (df + 1.0) / 2.0 * (1.0 + z * z / df).det_ln();
+            pred.push(lp.det_exp());
         }
         let growth: Vec<f64> = (0..mu.len())
             .map(|r| probs[r] * pred[r] * (1.0 - hazard))

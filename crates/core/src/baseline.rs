@@ -1,5 +1,6 @@
 //! Personal baselines: a short-window level against a normal range built from the nights before it.
 
+use crate::math::Det;
 use crate::stats;
 use std::collections::BTreeSet;
 
@@ -82,7 +83,7 @@ pub fn baseline(
     let n = values.len();
     let x: Vec<f64> = match spec.transform {
         Transform::None => values.to_vec(),
-        Transform::Ln => values.iter().map(|v| v.ln()).collect(),
+        Transform::Ln => values.iter().map(|v| v.det_ln()).collect(),
     };
     let mut out = BaselineOut {
         x: x.clone(),
@@ -175,7 +176,7 @@ mod tests {
         assert!(b.center[19].is_nan());
         assert!(b.center[20].is_finite());
         assert_eq!(b.state[20], 1); // far below the band
-        assert!((b.x[0] - 10f64.ln()).abs() < 1e-12);
+        assert!((b.x[0] - 10f64.det_ln()).abs() < 1e-12);
         // the 7-night level needs 4 values
         assert!(b.short[2].is_nan() && b.short[3].is_finite());
     }

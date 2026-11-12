@@ -27,6 +27,7 @@ pub mod hrv4t;
 pub mod kalman;
 pub mod lab;
 pub mod labels;
+pub mod math;
 pub mod nights;
 pub mod optim;
 pub mod registry;

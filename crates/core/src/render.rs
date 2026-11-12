@@ -1,6 +1,7 @@
 //! Drawing helpers: per-pixel min/max downsampling of a line, colour maps, and the rasters of nights by time of night.
 
 use crate::data::Data;
+use crate::math::Det;
 use crate::nights::main_sleeps;
 use crate::stats::quantile_linear;
 use crate::time::{local_hour, MS_HOUR, MS_MIN};
@@ -132,7 +133,7 @@ pub fn raster(
     let height = rows.len();
     let width = rows.iter().map(|r| r.len()).max().unwrap_or(0);
     let mut data = vec![0u8; width * height * 4];
-    let f = |v: f64| if log { v.ln() } else { v };
+    let f = |v: f64| if log { v.det_ln() } else { v };
     let (lo, hi) = (f(domain.0), f(domain.2));
     let mid = domain.1.map(f);
     for (y, row) in rows.iter().enumerate() {

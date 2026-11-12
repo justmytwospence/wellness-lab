@@ -2,6 +2,7 @@
 
 use crate::data::{Data, Series, Table};
 use crate::labels::{Label, LabelKind, Source};
+use crate::math::Det;
 use crate::stats::Rng;
 use crate::time::{doy, weekday, MS_DAY, MS_HOUR, MS_MIN};
 use std::collections::BTreeMap;
@@ -163,7 +164,7 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
         let wake_h = 6.75 + (rng.normal() * 30.0 + if free { 60.0 } else { 0.0 }) / 60.0;
         let wake = (day_ms + (wake_h * MS_HOUR as f64) as i64).max(onset + 5 * MS_HOUR);
         let tib = ((wake - onset) / MS_MIN) as usize;
-        let season = (std::f64::consts::TAU * doy(day) as f64 / 365.0).sin();
+        let season = (std::f64::consts::TAU * doy(day) as f64 / 365.0).det_sin();
         let rhr = 50.0 + 2.0 * season + rng.normal() * 1.2 + nt.rhr_add;
         let ln_r = 4.1 - 0.02 * season + rng.normal() * 0.12 + nt.lnr_add;
         let resp_n = 14.0 + rng.normal() * 0.4 + nt.resp_add;
@@ -194,7 +195,7 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
             } else {
                 0.0
             };
-            let h = rhr + 6.0 * (-(m as f64) / 90.0).exp() + late + early + rng.normal() * 2.0;
+            let h = rhr + 6.0 * (-(m as f64) / 90.0).det_exp() + late + early + rng.normal() * 2.0;
             hr.t.push(t);
             hr.cols.get_mut("v").unwrap().push(h);
             hr_sum += h;
@@ -217,9 +218,9 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
             spo2.cols.get_mut("mode").unwrap().push(0.0);
             if m % 5 == 4 {
                 let v = (ln_r
-                    + 0.15 * (std::f64::consts::TAU * m as f64 / 90.0).sin()
+                    + 0.15 * (std::f64::consts::TAU * m as f64 / 90.0).det_sin()
                     + rng.normal() * 0.2)
-                    .exp();
+                    .det_exp();
                 hrv5.t.push(t);
                 hrv5.cols.get_mut("v").unwrap().push(v);
                 hrv5.cols.get_mut("day").unwrap().push(day as f64);
@@ -328,7 +329,7 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
         }
         // rows
         let mean_v = lnr_vals.iter().sum::<f64>() / lnr_vals.len().max(1) as f64;
-        ln_hist.push(mean_v.ln());
+        ln_hist.push(mean_v.det_ln());
         let recent: Vec<f64> = ln_hist.iter().rev().take(28).cloned().collect();
         let mu = recent.iter().sum::<f64>() / recent.len() as f64;
         let push = |c: &mut BTreeMap<&str, Vec<f64>>, k: &'static str, v: f64| {
@@ -338,9 +339,9 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
         push(&mut dc, "utc_offset_min", off as f64);
         push(&mut dc, "rhr", rhr.round());
         push(&mut dc, "hrv_night", mean_v.round());
-        push(&mut dc, "hrv_week", mu.exp().round());
-        push(&mut dc, "hrv_bal_lo", (mu - 0.15).exp().round());
-        push(&mut dc, "hrv_bal_hi", (mu + 0.15).exp().round());
+        push(&mut dc, "hrv_week", mu.det_exp().round());
+        push(&mut dc, "hrv_bal_lo", (mu - 0.15).det_exp().round());
+        push(&mut dc, "hrv_bal_hi", (mu + 0.15).det_exp().round());
         push(
             &mut dc,
             "sleep_score",

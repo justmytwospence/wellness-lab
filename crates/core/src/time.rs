@@ -1,5 +1,7 @@
 //! Calendar and clock helpers. Days are days since 1970-01-01 (Garmin's local calendar date); weekdays count from Monday = 0.
 
+use crate::math::Det;
+
 pub const MS_DAY: i64 = 86_400_000;
 pub const MS_MIN: i64 = 60_000;
 pub const MS_HOUR: i64 = 3_600_000;
@@ -69,14 +71,14 @@ pub fn circ_mean_hours(x: &[f64]) -> f64 {
     let (mut s, mut c, mut n) = (0.0, 0.0, 0);
     for &h in x.iter().filter(|h| h.is_finite()) {
         let a = h * std::f64::consts::TAU / 24.0;
-        s += a.sin();
-        c += a.cos();
+        s += a.det_sin();
+        c += a.det_cos();
         n += 1;
     }
     if n == 0 {
         return f64::NAN;
     }
-    (s.atan2(c) * 24.0 / std::f64::consts::TAU).rem_euclid(24.0)
+    (s.det_atan2(c) * 24.0 / std::f64::consts::TAU).rem_euclid(24.0)
 }
 
 /// a - b on a 24 h clock, in [-12, 12).

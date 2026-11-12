@@ -3,6 +3,7 @@
 //! rates by stress band and sleep; the HRV status band is searched for the window and width that reproduce it.
 
 use crate::data::{Data, Table};
+use crate::math::Det;
 use crate::nights::{main_sleeps, nearest_value};
 use crate::stats::{self, mean, nnls, ols, quantile_linear, std};
 use crate::time::{MS_HOUR, MS_MIN};
@@ -182,14 +183,18 @@ pub struct BandGrid {
 
 /// Search the window and width that reproduce Garmin's balanced HRV range from the nightly mean of the five-minute values.
 fn hrv_band(data: &Data, nights: &Table) -> BandGrid {
-    let ln: Vec<f64> = nights.col("rmssd_mean").iter().map(|v| v.ln()).collect();
+    let ln: Vec<f64> = nights
+        .col("rmssd_mean")
+        .iter()
+        .map(|v| v.det_ln())
+        .collect();
     let by_day = |c: &str| -> Vec<f64> {
         nights
             .col("day")
             .iter()
             .map(|&d| {
                 data.day_index(d as i32)
-                    .map(|i| data.days.col(c)[i].ln())
+                    .map(|i| data.days.col(c)[i].det_ln())
                     .unwrap_or(f64::NAN)
             })
             .collect()

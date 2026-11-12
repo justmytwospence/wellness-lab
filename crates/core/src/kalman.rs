@@ -1,6 +1,7 @@
 //! State-space models of nightly signals: a local level (a signal that wanders plus noise) for the metric bench, and one
 //! latent factor behind several signals at once (EM, Shumway and Stoffer 1982) for the "strain" model.
 
+use crate::math::Det;
 use crate::optim::{nelder_mead, NmOptions};
 use crate::stats::{mean, std};
 use serde::Serialize;
@@ -29,7 +30,7 @@ fn filter(y: &[f64], se: f64, sn: f64) -> (f64, Vec<f64>, Vec<f64>) {
             let k = pp / f;
             mu += k * v;
             p = pp * se * se / f;
-            ll += -0.5 * ((2.0 * std::f64::consts::PI * f).ln() + v * v / f);
+            ll += -0.5 * ((2.0 * std::f64::consts::PI * f).det_ln() + v * v / f);
         } else {
             p = pp;
         }
@@ -44,13 +45,13 @@ pub fn local_level_fit(y: &[f64]) -> Option<LocalLevel> {
         return None;
     }
     let s = std(y, 1).max(1e-9);
-    let x0 = [(0.8 * s).ln(), (0.1 * s).ln()];
+    let x0 = [(0.8 * s).det_ln(), (0.1 * s).det_ln()];
     let r = nelder_mead(
-        |th| -filter(y, th[0].exp(), th[1].exp()).0,
+        |th| -filter(y, th[0].det_exp(), th[1].det_exp()).0,
         &x0,
         &NmOptions::defaults(2),
     );
-    let (se, sn) = (r.x[0].exp(), r.x[1].exp());
+    let (se, sn) = (r.x[0].det_exp(), r.x[1].det_exp());
     let (ll, level, level_sd) = filter(y, se, sn);
     Some(LocalLevel {
         sigma_eps: se,
@@ -121,7 +122,7 @@ pub fn dfm_fit(y: &[Vec<f64>], x: &[Vec<f64>], anchor: usize) -> Option<Dfm> {
                     let kg = p * lam[i] / s;
                     f += kg * innov;
                     p -= kg * lam[i] * p;
-                    ll += -0.5 * ((2.0 * std::f64::consts::PI * s).ln() + innov * innov / s);
+                    ll += -0.5 * ((2.0 * std::f64::consts::PI * s).det_ln() + innov * innov / s);
                 }
             }
             ff[t] = f;

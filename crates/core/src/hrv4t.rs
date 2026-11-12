@@ -4,6 +4,7 @@
 
 use crate::baseline::{baseline, notebook_spec};
 use crate::data::{Data, Table};
+use crate::math::Det;
 use crate::optim::{nelder_mead, NmOptions};
 use crate::stats::{self, mean, median, quantile_nearest, rolling_mean, rolling_std, shift, std};
 use crate::time::{day_of_ms, iso, MS_DAY, MS_MIN};
@@ -210,7 +211,7 @@ pub fn nightly(data: &Data) -> Nightly {
             }
         })
         .collect();
-    let lnr: Vec<f64> = rmssd.iter().map(|v| v.ln()).collect();
+    let lnr: Vec<f64> = rmssd.iter().map(|v| v.det_ln()).collect();
     let class: Vec<Option<&str>> = load
         .iter()
         .map(|&l| {
@@ -502,7 +503,7 @@ pub fn inside(data: &Data, nightly: &Table, trend: &Table) -> (Table, Table, Tab
                 if code < 4 {
                     rel.entry(code)
                         .or_default()
-                        .push((v[i] / nrm[k]).ln() * 100.0);
+                        .push((v[i] / nrm[k]).det_ln() * 100.0);
                 }
             }
         }
@@ -535,8 +536,8 @@ pub fn inside(data: &Data, nightly: &Table, trend: &Table) -> (Table, Table, Tab
     stage_hrv.set("n", cnt);
 
     let class = trend.text("load_class");
-    let r4: Vec<f64> = trend.col("rmssd_4h").iter().map(|v| v.ln()).collect();
-    let lg: Vec<f64> = trend.col("garmin").iter().map(|v| v.ln()).collect();
+    let r4: Vec<f64> = trend.col("rmssd_4h").iter().map(|v| v.det_ln()).collect();
+    let lg: Vec<f64> = trend.col("garmin").iter().map(|v| v.det_ln()).collect();
     let mut sens_rows = vec![];
     for (measure, col) in [
         ("whole night", trend.col("lnr")),
@@ -568,8 +569,8 @@ pub fn inside(data: &Data, nightly: &Table, trend: &Table) -> (Table, Table, Tab
 
 /// The notebook's state-space model: `y = level + beta * g + noise`, a random-walk level and a training response `g` that decays.
 fn kalman_ir(y: &[f64], load: &[f64], th: &[f64; 4]) -> (f64, Vec<[f64; 6]>) {
-    let (se, sn, beta, tau) = (th[0].exp(), th[1].exp(), th[2], th[3].exp());
-    let decay = (-1.0 / tau).exp();
+    let (se, sn, beta, tau) = (th[0].det_exp(), th[1].det_exp(), th[2], th[3].det_exp());
+    let decay = (-1.0 / tau).det_exp();
     let head: Vec<f64> = y.iter().take(14).copied().collect();
     let (mut mu, mut p, mut g, mut ll) = (mean(&head), 1.0, 0.0, 0.0);
     let mut out = vec![[f64::NAN; 6]; y.len()];
@@ -583,7 +584,7 @@ fn kalman_ir(y: &[f64], load: &[f64], th: &[f64; 4]) -> (f64, Vec<[f64; 6]>) {
             let v = y[t] - pred;
             mu += pp / f * v;
             p = pp * se * se / f;
-            ll += -0.5 * ((2.0 * std::f64::consts::PI * f).ln() + v * v / f);
+            ll += -0.5 * ((2.0 * std::f64::consts::PI * f).det_ln() + v * v / f);
             z = v / f.sqrt();
         } else {
             p = pp;
@@ -614,7 +615,7 @@ pub struct Model {
 pub fn model(nightly: &Table) -> (Model, Table) {
     let y = nightly.col("lnr");
     let load = nightly.col("load");
-    let x0 = [0.12f64.ln(), 0.02f64.ln(), -0.03, 2.0f64.ln()];
+    let x0 = [0.12f64.det_ln(), 0.02f64.det_ln(), -0.03, 2.0f64.det_ln()];
     let opts = NmOptions {
         maxiter: 4000,
         maxfev: 4000,
@@ -640,7 +641,7 @@ pub fn model(nightly: &Table) -> (Model, Table) {
     );
     let th = [r.x[0], r.x[1], r.x[2], r.x[3]];
     let (ll, out) = kalman_ir(&y, &load, &th);
-    let (se, sn, beta, tau) = (th[0].exp(), th[1].exp(), th[2], th[3].exp());
+    let (se, sn, beta, tau) = (th[0].det_exp(), th[1].det_exp(), th[2], th[3].det_exp());
     let last = out.last().copied().unwrap_or([f64::NAN; 6]);
     let day = nightly.col("day");
     let m = Model {
@@ -651,7 +652,7 @@ pub fn model(nightly: &Table) -> (Model, Table) {
         level: last[2],
         level_var: last[3],
         g: last[4],
-        pct_per_100: (beta.exp() - 1.0) * 100.0,
+        pct_per_100: (beta.det_exp() - 1.0) * 100.0,
         half_life_days: tau * std::f64::consts::LN_2,
         lr: 2.0 * (ll + r0.fun),
         nights: stats::nan_len(&y),
@@ -823,7 +824,10 @@ mod tests {
                 4.1 + 0.05 * ((i * 7 % 11) as f64 - 5.0) / 5.0 - if i % 5 == 1 { 0.15 } else { 0.0 }
             })
             .collect();
-        days.set("hrv_night", ln.iter().map(|l| l.exp().round()).collect());
+        days.set(
+            "hrv_night",
+            ln.iter().map(|l| l.det_exp().round()).collect(),
+        );
         days.txt
             .insert("hrv_status".into(), vec![Some("BALANCED".into()); n]);
         d.days = days;
@@ -864,7 +868,7 @@ mod tests {
         for i in 0..n {
             for k in 0..20 {
                 s.t.push((day0 + i as i32) as i64 * MS_DAY + (k as i64 + 1) * 5 * MS_MIN);
-                v.push(ln[i].exp() * (1.0 + 0.02 * ((k % 3) as f64 - 1.0)));
+                v.push(ln[i].det_exp() * (1.0 + 0.02 * ((k % 3) as f64 - 1.0)));
                 dayc.push((day0 + i as i32) as f64);
             }
         }

@@ -3,6 +3,7 @@
 //! beats, window_*, poincare_chart).
 
 use crate::data::{Data, Table};
+use crate::math::Det;
 use crate::stats::{self, mean, median, rolling_median, Rng};
 use serde::Serialize;
 
@@ -210,15 +211,15 @@ pub fn lombscargle(t: &[f64], y: &[f64], w: &[f64]) -> Vec<f64> {
         .map(|&w| {
             let (mut xc, mut xs, mut cc, mut ss, mut cs) = (0.0, 0.0, 0.0, 0.0, 0.0);
             for (ti, yi) in t.iter().zip(y) {
-                let (s, c) = (w * ti).sin_cos();
+                let (s, c) = (w * ti).det_sin_cos();
                 xc += yi * c;
                 xs += yi * s;
                 cc += c * c;
                 ss += s * s;
                 cs += c * s;
             }
-            let tau = 0.5 * (2.0 * cs).atan2(cc - ss);
-            let (st, ct) = tau.sin_cos();
+            let tau = 0.5 * (2.0 * cs).det_atan2(cc - ss);
+            let (st, ct) = tau.det_sin_cos();
             let (c2, s2, cst) = (ct * ct, st * st, 2.0 * ct * st);
             0.5 * ((ct * xc + st * xs).powi(2) / (c2 * cc + cst * cs + s2 * ss)
                 + (ct * xs - st * xc).powi(2) / (c2 * ss - cst * cs + s2 * cc))
@@ -390,7 +391,7 @@ mod tests {
     fn recording() -> Vec<f64> {
         let mut r = Rng::new(5);
         let mut v: Vec<f64> = (0..1500)
-            .map(|i| 800.0 + 40.0 * (i as f64 * 0.3).sin() + r.normal() * 10.0)
+            .map(|i| 800.0 + 40.0 * (i as f64 * 0.3).det_sin() + r.normal() * 10.0)
             .collect();
         v[200] = 4999.0; // a sensor gap
         v[400] = 100.0; // out of range
@@ -442,7 +443,7 @@ mod tests {
             .collect();
         let y: Vec<f64> = t
             .iter()
-            .map(|x| (std::f64::consts::TAU * 0.25 * x).sin())
+            .map(|x| (std::f64::consts::TAU * 0.25 * x).det_sin())
             .collect();
         let f: Vec<f64> = (1..60).map(|i| i as f64 * 0.01).collect();
         let w: Vec<f64> = f.iter().map(|v| std::f64::consts::TAU * v).collect();

@@ -3,6 +3,7 @@
 //! Altini and Plews 2021; training: Altini and Plews 2021) that each confirmed or denied episode moves toward the user's own.
 
 use crate::labels::LabelKind;
+use crate::math::Det;
 use std::collections::BTreeMap;
 
 pub const MODEL_VERSION: &str = "classify-1";
@@ -107,7 +108,7 @@ fn prior(k: LabelKind) -> f64 {
 }
 
 fn log_normal(x: f64, mu: f64, sd: f64) -> f64 {
-    -0.5 * ((x - mu) / sd).powi(2) - sd.ln()
+    -0.5 * ((x - mu) / sd).powi(2) - sd.det_ln()
 }
 
 /// What the user's answers taught the model.
@@ -177,7 +178,7 @@ pub fn posterior(f: &Features, l: &Learned) -> BTreeMap<LabelKind, f64> {
                 } else {
                     0.0
                 };
-            let mut lp = (alpha / total).ln();
+            let mut lp = (alpha / total).det_ln();
             let t = learned_template(k, l);
             for (i, x) in f.cont().iter().enumerate() {
                 if x.is_finite() {
@@ -191,19 +192,19 @@ pub fn posterior(f: &Features, l: &Learned) -> BTreeMap<LabelKind, f64> {
             } else {
                 2
             };
-            lp += night_bins(k)[bin].ln();
+            lp += night_bins(k)[bin].det_ln();
             if f.weekend {
                 lp += if k == LabelKind::Alcohol {
-                    2f64.ln()
+                    2f64.det_ln()
                 } else {
                     0.0
                 };
             }
             lp += match (k == LabelKind::HardTraining, f.hard_day_before) {
-                (true, true) => 0.8f64.ln(),
-                (true, false) => 0.2f64.ln(),
-                (false, true) => 0.3f64.ln(),
-                (false, false) => 0.7f64.ln(),
+                (true, true) => 0.8f64.det_ln(),
+                (true, false) => 0.2f64.det_ln(),
+                (false, true) => 0.3f64.det_ln(),
+                (false, false) => 0.7f64.det_ln(),
             };
             if f.d_stress.is_finite() {
                 lp += if k == LabelKind::Stress {
@@ -216,8 +217,9 @@ pub fn posterior(f: &Features, l: &Learned) -> BTreeMap<LabelKind, f64> {
         })
         .collect();
     let mx = logp.iter().map(|x| x.1).fold(f64::NEG_INFINITY, f64::max);
-    let z: f64 = logp.iter().map(|x| (x.1 - mx).exp()).sum();
-    logp.iter_mut().for_each(|x| x.1 = ((x.1 - mx).exp()) / z);
+    let z: f64 = logp.iter().map(|x| (x.1 - mx).det_exp()).sum();
+    logp.iter_mut()
+        .for_each(|x| x.1 = ((x.1 - mx).det_exp()) / z);
     logp.into_iter().collect()
 }
 
