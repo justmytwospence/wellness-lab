@@ -353,7 +353,7 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
             "altitude_avg",
             if nt.alt > 0.0 { nt.alt } else { 1600.0 },
         );
-        push(&mut dc, "steps", 6000.0 + rng.normal() * 1500.0);
+        push(&mut dc, "steps", (6000.0 + rng.normal() * 1500.0).round());
         push(&mut dc, "skin_temp_dev", f64::NAN);
         let _ = nt.temp_add;
         txt_status.push(Some("BALANCED".into()));
@@ -363,11 +363,11 @@ pub fn synth(seed: u64, days: i32, start_day: i32) -> (Data, Vec<Label>) {
             sl("day", day as f64),
             sl("start", onset as f64),
             sl("end", wake as f64),
-            sl("sleep_s", tib as f64 * 60.0 * 0.93),
-            sl("deep_s", tib as f64 * 60.0 * 0.17),
-            sl("light_s", tib as f64 * 60.0 * 0.5),
-            sl("rem_s", tib as f64 * 60.0 * 0.23),
-            sl("awake_s", tib as f64 * 60.0 * 0.07),
+            sl("sleep_s", (tib as f64 * 60.0 * 0.93).round()),
+            sl("deep_s", (tib as f64 * 60.0 * 0.17).round()),
+            sl("light_s", (tib as f64 * 60.0 * 0.5).round()),
+            sl("rem_s", (tib as f64 * 60.0 * 0.23).round()),
+            sl("awake_s", (tib as f64 * 60.0 * 0.07).round()),
             sl("avg_hr", hr_sum / tib as f64),
             sl("rhr", rhr.round()),
             sl("resp_avg", resp_n),

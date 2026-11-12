@@ -719,6 +719,12 @@ pub fn channels(
     day: i32,
     pad_min: i64,
 ) -> Option<NightChannels> {
+    let nt = night_features(data, labels, settings);
+    channels_with(data, &nt, day, pad_min)
+}
+
+/// As `channels`, with the night table already computed.
+pub fn channels_with(data: &Data, nt: &Table, day: i32, pad_min: i64) -> Option<NightChannels> {
     let sleeps = main_sleeps(data);
     let &(_, onset, wake, _) = sleeps.iter().find(|s| s.0 == day)?;
     let (t0, t1) = (onset - pad_min * MS_MIN, wake + pad_min * MS_MIN);
@@ -764,7 +770,6 @@ pub fn channels(
     };
     out.stages = sel(&data.stages, "start", "end");
     out.activities = sel(&data.activities, "start", "end");
-    let nt = night_features(data, labels, settings);
     let days = nt.col("day");
     if let Some(r) = (0..nt.n).find(|&k| days[k] as i32 == day) {
         for (k, v) in &nt.num {

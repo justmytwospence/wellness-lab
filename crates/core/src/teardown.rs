@@ -98,6 +98,12 @@ pub struct BodyBattery {
     pub days: usize,
 }
 
+/// Whether `t` falls inside a main sleep (sleeps sorted by day, so their onsets are in order).
+fn in_sleep(sleeps: &[(i32, i64, i64, usize)], t: i64) -> bool {
+    let i = sleeps.partition_point(|s| s.1 <= t);
+    (i > 0 && t < sleeps[i - 1].2) || (i > 1 && t < sleeps[i - 2].2)
+}
+
 fn band(v: f64, q: f64) -> &'static str {
     if q == 2.0 {
         "activity"
@@ -121,7 +127,7 @@ fn body_battery(data: &Data) -> BodyBattery {
         return BodyBattery::default();
     };
     let sleeps = main_sleeps(data);
-    let asleep = |t: i64| sleeps.iter().any(|s| t >= s.1 && t < s.2);
+    let asleep = |t: i64| in_sleep(&sleeps, t);
     let q = st.c("q");
     let mut cells: BTreeMap<(String, bool), Vec<f64>> = BTreeMap::new();
     let mut samples: Vec<(i64, f64, &'static str, bool, f64)> = vec![]; // t, rate, band, asleep, dt
@@ -260,7 +266,19 @@ fn stress_vs_hr(data: &Data) -> StressVsHr {
     };
     let q = st.c("q");
     let rhr = data.days.col("rhr");
-    let (as_, ae) = (data.activities.col("start"), data.activities.col("end"));
+    let mut acts: Vec<(f64, f64)> = data
+        .activities
+        .col("start")
+        .into_iter()
+        .zip(data.activities.col("end"))
+        .filter(|(a, b)| a.is_finite() && b.is_finite())
+        .collect();
+    acts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let ends_sorted: Vec<f64> = {
+        let mut e: Vec<f64> = acts.iter().map(|a| a.1).collect();
+        e.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        e
+    };
     let sleeps = main_sleeps(data);
     let mut cells: BTreeMap<(i64, usize), Vec<f64>> = BTreeMap::new();
     for i in (0..st.len()).step_by(3) {
@@ -276,15 +294,19 @@ fn stress_vs_hr(data: &Data) -> StressVsHr {
         if !h.is_finite() || !rhr[di].is_finite() {
             continue;
         }
-        let last_end = (0..data.activities.n)
-            .map(|a| ae[a])
-            .filter(|&e| e <= st.t[i] as f64 && st.t[i] as f64 - e <= 24.0 * 3.6e6)
-            .fold(f64::NAN, f64::max);
-        let during =
-            (0..data.activities.n).any(|a| st.t[i] as f64 >= as_[a] && st.t[i] as f64 <= ae[a]);
+        let tf = st.t[i] as f64;
+        // the activity that began last before t: t is during it when it has not ended
+        let k = acts.partition_point(|a| a.0 <= tf);
+        let during = (k.saturating_sub(4)..k).any(|j| tf <= acts[j].1);
         if during {
             continue;
         }
+        let e = ends_sorted.partition_point(|&e| e <= tf);
+        let last_end = if e > 0 && tf - ends_sorted[e - 1] <= 24.0 * 3.6e6 {
+            ends_sorted[e - 1]
+        } else {
+            f64::NAN
+        };
         let since = if last_end.is_nan() {
             3
         } else {

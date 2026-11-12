@@ -298,14 +298,14 @@ pub fn cosinor_weekly(g: &Grid) -> Table {
     .iter()
     .map(|c| (*c, vec![]))
     .collect();
+    let hr_src: Vec<f64> = (0..g.hr.len())
+        .map(|m| if g.busy[m] { f64::NAN } else { g.hr[m] })
+        .collect();
     for end in (6..g.days).step_by(1) {
         let Some(days) = window_days(g, end, 7, 5) else {
             continue;
         };
         let act: Vec<f64> = days.iter().flat_map(|&d| g.hourly(d, &g.act)).collect();
-        let hr_src: Vec<f64> = (0..g.hr.len())
-            .map(|m| if g.busy[m] { f64::NAN } else { g.hr[m] })
-            .collect();
         let hr: Vec<f64> = days.iter().flat_map(|&d| g.hourly(d, &hr_src)).collect();
         let (Some(a), Some(h)) = (cosinor(&act), cosinor(&hr)) else {
             continue;
@@ -500,26 +500,20 @@ pub fn hr_rhythm(g: &Grid) -> Table {
         if y.len() < 200 {
             continue;
         }
-        let mut best: Option<(f64, f64, Vec<f64>, f64)> = None;
-        for k in 0..48 {
-            let phi = k as f64 * 0.5;
-            let rows: Vec<Vec<f64>> = (0..y.len())
-                .map(|i| vec![1.0, (TAU * (hh[i] - phi) / 24.0).cos(), x[i], s[i]])
-                .collect();
-            if let Some(f) = ols(&rows, &y) {
-                let rss: f64 = f.resid.iter().map(|r| r * r).sum();
-                if best.as_ref().map(|b| rss < b.0).unwrap_or(true) {
-                    best = Some((rss, phi, f.beta.clone(), f.r2));
-                }
-            }
-        }
-        let Some((_, mut phi, mut beta, r2)) = best else {
+        // y = b + c cos(w h) + d sin(w h) + e x + f s: the phase search of a cosine is linear in cos and sin
+        let rows: Vec<Vec<f64>> = (0..y.len())
+            .map(|i| {
+                let a = TAU * hh[i] / 24.0;
+                vec![1.0, a.cos(), a.sin(), x[i], s[i]]
+            })
+            .collect();
+        let Some(f) = ols(&rows, &y) else {
             continue;
         };
-        if beta[1] < 0.0 {
-            phi = (phi + 12.0).rem_euclid(24.0);
-            beta[1] = -beta[1];
-        }
+        let (cc, ss) = (f.beta[1], f.beta[2]);
+        let phi = (ss.atan2(cc) * 24.0 / TAU).rem_euclid(24.0);
+        let beta = [f.beta[0], (cc * cc + ss * ss).sqrt(), f.beta[3], f.beta[4]];
+        let r2 = f.r2;
         for (c, v) in cols.iter_mut().zip([
             (g.day0 + end as i32) as f64,
             beta[0],
@@ -666,14 +660,19 @@ pub fn run(
     from: i32,
     to: i32,
 ) -> Circadian {
-    let g = grid(data, from, to);
     let nights = night_features(data, labels, settings);
+    run_with(data, &nights, settings, from, to)
+}
+
+/// As `run`, with the night table already computed.
+pub fn run_with(data: &Data, nights: &Table, settings: &Settings, from: i32, to: i32) -> Circadian {
+    let g = grid(data, from, to);
     Circadian {
         nonparametric: nonparametric(&g),
         cosinor: cosinor_weekly(&g),
         sri: sri(&g),
-        chronotype: chronotype(&nights),
-        sleep_debt: sleep_debt(&nights, settings),
+        chronotype: chronotype(nights),
+        sleep_debt: sleep_debt(nights, settings),
         hr_rhythm: hr_rhythm(&g),
         dlmo: forger_dlmo(&g),
     }

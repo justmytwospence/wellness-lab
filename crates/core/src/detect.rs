@@ -143,6 +143,17 @@ pub fn detect(
     existing: &[Proposal],
 ) -> Vec<Proposal> {
     let nt = night_features(data, labels, settings);
+    detect_with(data, &nt, labels, settings, existing)
+}
+
+/// As `detect`, with the night table already computed.
+pub fn detect_with(
+    data: &Data,
+    nt: &Table,
+    labels: &[Label],
+    settings: &Settings,
+    existing: &[Proposal],
+) -> Vec<Proposal> {
     let n = nt.n;
     if n == 0 {
         return vec![];

@@ -7,7 +7,7 @@ use crate::dfa::Windows;
 use crate::events::{event_study, Controls};
 use crate::experiments::{analyze, ExperimentDef};
 use crate::labels::{excluded_days, Label, LabelKind, Proposal, Settings};
-use crate::nights::{channels, night_features};
+use crate::nights::{channels_with, night_features};
 use crate::render::{bin_matrix, domain_for, m4, raster, typical, Align, Colormap};
 use crate::stats::{mean, quantile_linear};
 use crate::{
@@ -297,16 +297,18 @@ impl Lab {
                     to.unwrap_or(i32::MAX / 2),
                 ))
             }
-            Job::Night { day, pad_min } => json(
-                &channels(
-                    &self.data,
-                    &self.labels,
-                    &self.settings,
-                    day,
-                    pad_min.unwrap_or(60),
+            Job::Night { day, pad_min } => {
+                self.nights();
+                json(
+                    &channels_with(
+                        &self.data,
+                        self.nights_cache.as_ref().unwrap(),
+                        day,
+                        pad_min.unwrap_or(60),
+                    )
+                    .ok_or_else(|| format!("no sleep on day {day}"))?,
                 )
-                .ok_or_else(|| format!("no sleep on day {day}"))?,
-            ),
+            }
             Job::Downsample { series, t0, t1, px } => {
                 let s = self
                     .data
@@ -403,7 +405,14 @@ impl Lab {
                 json(&o)
             }
             Job::Circadian { from, to } => {
-                let c = circadian::run(&self.data, &self.labels, &self.settings, from, to);
+                self.nights();
+                let c = circadian::run_with(
+                    &self.data,
+                    self.nights_cache.as_ref().unwrap(),
+                    &self.settings,
+                    from,
+                    to,
+                );
                 json(
                     &json!({"nonparametric": c.nonparametric, "cosinor": c.cosinor, "sri": c.sri, "chronotype": c.chronotype, "sleep_debt": c.sleep_debt, "hr_rhythm": c.hr_rhythm, "dlmo": c.dlmo}),
                 )
@@ -441,8 +450,14 @@ impl Lab {
                 })
             }
             Job::Detect => {
-                let props =
-                    detect::detect(&self.data, &self.labels, &self.settings, &self.proposals);
+                self.nights();
+                let props = detect::detect_with(
+                    &self.data,
+                    self.nights_cache.as_ref().unwrap(),
+                    &self.labels,
+                    &self.settings,
+                    &self.proposals,
+                );
                 json(&json!({"proposals": props, "model_version": crate::classify::MODEL_VERSION}))
             }
             Job::EventStudy {
