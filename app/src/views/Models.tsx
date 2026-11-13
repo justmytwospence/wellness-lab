@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { kindInfo } from '@wl/schema';
 import { PAL, diverging, isoDay, signed } from '@wl/views';
 import { useApp } from '../lib/app';
 import { useJob } from '../lib/useJob';
 import { navigate } from '../lib/router';
+import { Fill, useSize } from '../ui/Fill';
+import { InspectorNotes } from '../ui/Inspector';
+import { View } from '../ui/View';
 import { LineChart, type BandSpec, type LineSpec, type SpanSpec } from '../charts/analysis/lines';
 import { HBars } from '../charts/analysis/dots';
 import { Heatgrid } from '../charts/analysis/heat';
@@ -23,7 +26,13 @@ function Strain({ dfm, range }: { dfm: Dfm; range: [number, number] }) {
   const lines = useMemo<LineSpec[]>(() => [{ label: 'strain', y: idx.map((i) => fit.factor[i] ?? null), color: PAL.alert }], [idx, fit]);
   const band = useMemo<BandSpec>(() => ({ lo: idx.map((i) => (fit.factor[i] ?? NaN) - (fit.factor_sd[i] ?? NaN)), hi: idx.map((i) => (fit.factor[i] ?? NaN) + (fit.factor_sd[i] ?? NaN)), color: PAL.alert }), [idx, fit]);
   const spans = useMemo<SpanSpec[]>(() => state.labels.filter((l) => !l.deleted_at && l.end_day >= range[0] && l.start_day <= range[1]).map((l) => ({ a: l.start_day * 86400, b: (l.end_day + 1) * 86400, color: kindInfo(l.kind).color })), [state.labels, range]);
-  return <LineChart x={x} lines={lines} band={band} spans={spans} time hline={0} height={220} xFmt={dayText} yLabel="strain (SD)" ariaLabel="Latent strain factor with a one standard deviation band; labels along the bottom edge" testid="chart-strain" />;
+  return <Fill>{({ h }) => <LineChart x={x} lines={lines} band={band} spans={spans} time hline={0} height={h} xFmt={dayText} yLabel="strain (SD)" ariaLabel="Latent strain factor with a one standard deviation band; labels along the bottom edge" testid="chart-strain" />}</Fill>;
+}
+
+/** Bars that take the width of their container, up to their natural 440. */
+function Bars({ children }: { children(width: number): ReactNode }) {
+  const [ref, { w }] = useSize<HTMLDivElement>();
+  return <div ref={ref} style={{ width: '100%' }}>{w > 0 && children(Math.min(440, w))}</div>;
 }
 
 function Residuals({ dfm, range }: { dfm: Dfm; range: [number, number] }) {
@@ -60,55 +69,73 @@ function Body() {
   const m = (hrv.data as unknown as { model?: Record<string, number | string> } | null)?.model;
   const missing = SIGNALS.filter((s) => dfm && !dfm.signals.includes(s));
   const lr = Number(m?.lr);
-  return (
-    <div className="page">
-      <h1>Models</h1>
-      <Intro>Two models of how your body responds. The strain factor is one hidden number behind your overnight heart rate, HRV, breathing and stress, pushed by training, travel, alcohol and illness. The HRV model asks how much of tonight's HRV is the training you did.</Intro>
-      <JobNote loading={loading} error={error} />
-      {!nights || nights.n === 0 ? <div className="empty">No nights loaded yet.</div> : null}
-      {dfm?.error && <Card title="Strain factor" method="model.strain" job={dfmJob}><div className="empty" data-testid="dfm-error">Not enough nights to fit the model ({dfm.error}).</div></Card>}
-      {dfm?.fit && dfm.days && (
+  const hrvCard = (
+    <Card title="HRV and training (state-space model)" method="hrv.state_space" job={hrvJob} testid="card-hrv-model">
+      {m ? (
         <>
-          <Card title="Strain factor" method="model.strain" job={dfmJob} testid="card-strain">
-            <p className="muted" style={{ fontSize: 12 }}>High means your nocturnal heart rate, breathing and stress are up and HRV is down together, beyond what your own baseline explains. Coloured marks along the bottom edge are your labels.</p>
-            <Strain dfm={dfm} range={range} />
-            {missing.length > 0 && <p className="muted" style={{ fontSize: 12 }}>Left out: {missing.map((s) => <span key={s}>{metricLabel(s)} (<NotAvailable inline input={metricInput(s)} />) </span>)}</p>}
-          </Card>
-          <div className="grid2">
-            <Card title="Loadings" method="model.strain" job={dfmJob} testid="card-loadings">
-              <p className="muted" style={{ fontSize: 12 }}>How strongly each signal follows the factor (positive: rises with strain).</p>
-              <HBars items={dfm.signals.map((s, i) => ({ label: metricLabel(s), value: dfm.fit!.loadings[i] ?? NaN }))} width={440} />
-              <p className="mono muted" style={{ fontSize: 12 }}>phi = {fmt(dfm.fit.phi)} (carry-over from one night to the next)</p>
-            </Card>
-            <Card title="What pushes the factor" method="model.strain" job={dfmJob} testid="card-gamma">
-              <p className="muted" style={{ fontSize: 12 }}>Effect of each input on the next morning's strain (gamma).</p>
-              <HBars items={(dfm.inputs ?? []).map((s, i) => ({ label: s, value: dfm.fit!.gamma[i] ?? NaN }))} width={440} color={PAL.hr} />
-              <p className="mono muted" style={{ fontSize: 12 }}>{dfm.days.length} nights, log-likelihood {fmt(dfm.fit.loglik, 1)}, {dfm.fit.iterations} iterations</p>
-            </Card>
-          </div>
-          <Card title="Residuals: what the factor does not explain" method="model.strain" job={dfmJob} testid="card-residuals">
-            <p className="muted" style={{ fontSize: 12 }}>Each cell is the night's value minus loading times factor, in units of that signal's noise. Faded cells have fewer than 14 baseline nights behind them.</p>
-            <Residuals dfm={dfm} range={range} />
-          </Card>
+          <table className="t" style={{ maxWidth: 560 }}>
+            <tbody>
+              <tr><td>Training response (beta)</td><td className="n" data-testid="model-pct">{signed(Number(m.pct_per_100), 1)}% HRV per 100 load</td></tr>
+              <tr><td>Half-life of the response</td><td className="n">{fmt(Number(m.half_life_days), 1)} days</td></tr>
+              <tr><td>Likelihood-ratio test against no response</td><td className="n">LR = {fmt(lr, 1)} on 2 df, p = {Number.isFinite(lr) ? (Math.exp(-Math.max(0, lr) / 2) < 0.001 ? '< 0.001' : Math.exp(-Math.max(0, lr) / 2).toFixed(3)) : '\u2013'}</td></tr>
+              <tr><td>Noise and level drift (sd, ln RMSSD)</td><td className="n">{fmt(Number(m.sigma_eps), 3)} / {fmt(Number(m.sigma_eta), 3)}</td></tr>
+              <tr><td>Nights used</td><td className="n">{String(m.nights)}</td></tr>
+            </tbody>
+          </table>
+          <p className="muted" style={{ fontSize: 12 }}>A negative response means hard training lowers the next nights' HRV and fades with the half-life above.</p>
         </>
-      )}
-      <Card title="HRV and training (state-space model)" method="hrv.state_space" job={hrvJob} testid="card-hrv-model">
-        {m ? (
-          <>
-            <table className="t" style={{ maxWidth: 560 }}>
-              <tbody>
-                <tr><td>Training response (beta)</td><td className="n" data-testid="model-pct">{signed(Number(m.pct_per_100), 1)}% HRV per 100 load</td></tr>
-                <tr><td>Half-life of the response</td><td className="n">{fmt(Number(m.half_life_days), 1)} days</td></tr>
-                <tr><td>Likelihood-ratio test against no response</td><td className="n">LR = {fmt(lr, 1)} on 2 df, p = {Number.isFinite(lr) ? (Math.exp(-Math.max(0, lr) / 2) < 0.001 ? '< 0.001' : Math.exp(-Math.max(0, lr) / 2).toFixed(3)) : '\u2013'}</td></tr>
-                <tr><td>Noise and level drift (sd, ln RMSSD)</td><td className="n">{fmt(Number(m.sigma_eps), 3)} / {fmt(Number(m.sigma_eta), 3)}</td></tr>
-                <tr><td>Nights used</td><td className="n">{String(m.nights)}</td></tr>
-              </tbody>
-            </table>
-            <p className="muted" style={{ fontSize: 12 }}>A negative response means hard training lowers the next nights' HRV and fades with the half-life above.</p>
-          </>
-        ) : hrv.loading ? <p className="muted">Fitting...</p> : <div className="empty">Not enough HRV nights to fit the model.</div>}
+      ) : hrv.loading ? <p className="muted">Fitting...</p> : <div className="empty">Not enough HRV nights to fit the model.</div>}
+    </Card>
+  );
+  // the right column scrolls as a whole; each card keeps its natural height
+  const cell = (key: string, card: ReactNode) => <div key={key} style={{ flex: 'none', background: 'var(--bg)' }}>{card}</div>;
+
+  const fit = dfm?.fit && dfm.days ? { dfm, fit: dfm.fit, days: dfm.days } : null;
+  const left = fit ? (
+    <div className="vgrid" style={{ gridTemplateRows: 'minmax(0,1.1fr) minmax(0,1fr)' }}>
+      <Card title="Strain factor" method="model.strain" job={dfmJob} testid="card-strain">
+        <InspectorNotes><h2>Strain factor</h2><p>High means your nocturnal heart rate, breathing and stress are up and HRV is down together, beyond what your own baseline explains. Coloured marks along the bottom edge are your labels.</p></InspectorNotes>
+        <Strain dfm={fit.dfm} range={range} />
+        {missing.length > 0 && <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>Left out: {missing.map((s) => <span key={s}>{metricLabel(s)} (<NotAvailable inline input={metricInput(s)} />) </span>)}</p>}
+      </Card>
+      <Card title="Residuals: what the factor does not explain" method="model.strain" job={dfmJob} testid="card-residuals" scroll>
+        <p className="muted" style={{ fontSize: 12 }}>Each cell is the night's value minus loading times factor, in units of that signal's noise. Faded cells have fewer than 14 baseline nights behind them.</p>
+        <Residuals dfm={fit.dfm} range={range} />
       </Card>
     </div>
+  ) : dfm?.error ? (
+    <Card title="Strain factor" method="model.strain" job={dfmJob}><div className="empty" data-testid="dfm-error">Not enough nights to fit the model ({dfm.error}).</div></Card>
+  ) : (
+    <div className="panel">
+      <JobNote loading={loading} error={error} />
+      {!nights || nights.n === 0 ? <div className="empty">No nights loaded yet.</div> : null}
+    </div>
+  );
+
+  return (
+    <View title="Models" desc="One hidden strain factor behind your nights, and what drives it.">
+      <Intro>Two models of how your body responds. The strain factor is one hidden number behind your overnight heart rate, HRV, breathing and stress, pushed by training, travel, alcohol and illness. The HRV model asks how much of tonight's HRV is the training you did.</Intro>
+      <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0,1fr) 380px' }}>
+        {left}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--line)', overflow: 'auto', minHeight: 0 }}>
+          {fit && cell('loadings', (
+            <Card title="Loadings" method="model.strain" job={dfmJob} testid="card-loadings">
+              <p className="muted" style={{ fontSize: 12 }}>How strongly each signal follows the factor (positive: rises with strain).</p>
+              <Bars>{(w) => <HBars items={fit.dfm.signals.map((s, i) => ({ label: metricLabel(s), value: fit.fit.loadings[i] ?? NaN }))} width={w} />}</Bars>
+              <p className="mono muted" style={{ fontSize: 12 }}>phi = {fmt(fit.fit.phi)} (carry-over from one night to the next)</p>
+            </Card>
+          ))}
+          {fit && cell('gamma', (
+            <Card title="What pushes the factor" method="model.strain" job={dfmJob} testid="card-gamma">
+              <p className="muted" style={{ fontSize: 12 }}>Effect of each input on the next morning's strain (gamma).</p>
+              <Bars>{(w) => <HBars items={(fit.dfm.inputs ?? []).map((s, i) => ({ label: s, value: fit.fit.gamma[i] ?? NaN }))} width={w} color={PAL.hr} />}</Bars>
+              <p className="mono muted" style={{ fontSize: 12 }}>{fit.days.length} nights, log-likelihood {fmt(fit.fit.loglik, 1)}, {fit.fit.iterations} iterations</p>
+            </Card>
+          ))}
+          {cell('hrv', hrvCard)}
+        </div>
+      </div>
+    </View>
   );
 }
 

@@ -1,19 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { area as d3area, line as d3line } from 'd3-shape';
 import type { Table } from '@wl/schema';
 import { ADVICE_COLORS, LOAD_COLORS, PAL, isoDay, mix } from '@wl/views';
 import { useJob } from '../lib/useJob';
 import { useNumParam, useParam } from '../lib/router';
+import { useApp } from '../lib/app';
+import { Fill, Stack } from '../ui/Fill';
+import { View } from '../ui/View';
+import { Segmented } from '../ui/Segmented';
 import { col, finite, txt } from '../lib/util';
 import { Empty } from '../charts/small';
 import { Plot } from '../charts/Plot';
 import { Raster } from '../charts/Raster';
 import { TimeChart, type Shade } from '../charts/TimeChart';
-import { ChartCard, GOOD, Legend, Missing, NeedsLargerScreen, Select, Slider, Split, useNarrow, useNotes } from '../charts/lab';
+import { ChartCard, GOOD, Legend, Missing, NeedsLargerScreen, Select, Slider, Split, useNarrow } from '../charts/lab';
 import { loess, quantile, sortedFinite } from '../charts/loess';
 import { AcuteNote, BaselineNote, IntroNote, ModelNote, NightNote, NightsNote, TrendsNote, type ModelNums } from '../charts/notes';
 
-const SPANS: Record<string, [string, number]> = { '90': ['Last 90 nights', 90], '6m': ['Last 6 months', 183], '1y': ['Last year', 365], all: ['Everything', 100000] };
+/** A Fill that is itself a Stack child: the Stack's wrapper is not a flex container, so it is pinned to the wrapper's box. */
+const PIN: CSSProperties = { position: 'absolute', inset: 0 };
 const RANGES: [string, string][] = [['28', '28 nights (Vesterinen, Nuuttila)'], ['60', '60 nights (HRV4Training)'], ['90', '90 nights']];
 const TABS: [string, string][] = [['baseline', 'Baseline'], ['trends', 'Trends'], ['response', 'Response'], ['night', 'Inside the night'], ['model', 'Model']];
 const CLASSES = ['rest', 'easy', 'moderate', 'hard'] as const;
@@ -34,15 +39,15 @@ interface Headline { day: string; score: number; base_score: number; base_change
 interface Result { nightly: Table; scored: Table; acute_lag: Table; acute_pts: Table; barcode: Table; stage_hrv: Table; night_sens: Table; model_view: Table; model: ModelNums; load_cuts: [number, number]; headline: Headline | null }
 
 /** Rows of a night table in the view span, as column getters. */
-function useView(t: Table, from: number) {
+function useView(t: Table, from: number, to: number) {
   return useMemo(() => {
     const day = col(t, 'day');
     const keep: number[] = [];
-    day.forEach((d, i) => d >= from && keep.push(i));
+    day.forEach((d, i) => d >= from && d <= to && keep.push(i));
     const get = (name: string) => { const c = col(t, name); return keep.map((i) => c[i]!); };
     const gets = (name: string) => { const c = txt(t, name); return keep.map((i) => c[i] ?? null); };
     return { days: keep.map((i) => day[i]!), get, gets };
-  }, [t, from]);
+  }, [t, from, to]);
 }
 
 export default function Hrv() {
@@ -52,66 +57,58 @@ export default function Hrv() {
 }
 
 function HrvView() {
-  const [span, setSpan] = useParam('span', '6m');
+  const { range: [from, to] } = useApp();
   const [nr, setNr] = useNumParam('nr', 60);
   const [kd, setKd] = useNumParam('kd', 1.5);
   const [ks, setKs] = useNumParam('ks', 0.5);
   const [tab, setTab] = useParam('tab', 'baseline');
-  const notes = useNotes();
   const job = { kind: 'hrv4t' as const, range_days: nr, k_daily: kd, k_swc: ks };
   const { data, loading, error } = useJob(job);
   const r = data as unknown as Result | null;
-  const spanDays = (SPANS[span] ?? SPANS['6m']!)[1];
 
   const body = (() => {
-    if (error) return <div className="card err" role="alert">{error}</div>;
+    if (error) return <div className="err" role="alert" style={{ padding: 20 }}>{error}</div>;
     if (!r) return <Empty>{loading ? 'Running the HRV analysis...' : 'No data yet.'}</Empty>;
     if (r.nightly.n === 0) return <ChartCard title="HRV" method="baseline.normal_range" job={job}><Missing needs="Garmin nightly HRV or five-minute HRV values (hrv5)" /></ChartCard>;
-    const lastDay = Math.max(...col(r.nightly, 'day'));
-    const from = lastDay - spanDays;
     return (
       <>
-        {r.headline && <Latest h={r.headline} />}
-        <div className="pill-row" role="tablist">
-          {TABS.map(([k, t]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t}</button>)}
-        </div>
-        {tab === 'baseline' && <BaselineChart r={r} from={from} job={job} />}
-        {tab === 'trends' && <TrendsCharts r={r} from={from} />}
+        {tab === 'baseline' && <BaselineChart r={r} from={from} to={to} job={job} />}
+        {tab === 'trends' && <TrendsCharts r={r} from={from} to={to} />}
         {tab === 'response' && <ResponseCharts r={r} />}
-        {tab === 'night' && <InsideNight r={r} from={from} />}
-        {tab === 'model' && <ModelChart r={r} from={from} />}
+        {tab === 'night' && <InsideNight r={r} from={from} to={to} />}
+        {tab === 'model' && <ModelChart r={r} from={from} to={to} />}
       </>
     );
   })();
 
   const aside = r && r.nightly.n > 0 ? <HrvNotes r={r} tab={tab} /> : <IntroNote />;
   return (
-    <div className="page">
-      <h1>HRV</h1>
-      <p className="muted">Nightly HRV against your own normal range, trend patterns, the response to training, the inside of the night and a model of what tonight should be. Press <kbd>n</kbd> for the notes.</p>
-      <div className="controls">
-        <Select label="Show" value={span} options={Object.entries(SPANS).map(([k, v]) => [k, v[0]] as [string, string])} onChange={(v) => setSpan(v)} />
-        <Select label="Normal range from" value={String(nr)} options={RANGES} onChange={(v) => setNr(Number(v))} />
-        <Slider label="Night range (SD)" min={0.5} max={2.5} step={0.25} value={kd} onCommit={setKd} fmt={(v) => v.toFixed(2)} />
-        <Slider label="Baseline band (SD)" min={0.25} max={1} step={0.05} value={ks} onCommit={setKs} fmt={(v) => v.toFixed(2)} />
-      </div>
-      <Split notes={notes} aside={aside}>{body}</Split>
-    </div>
+    <View title="HRV" desc="Nightly HRV against your own normal range."
+      strip={r && r.nightly.n > 0 && r.headline ? <Latest h={r.headline} /> : undefined}
+      tools={
+        <>
+          <Select label="Normal range from" value={String(nr)} options={RANGES} onChange={(v) => setNr(Number(v))} />
+          <Slider label="Night range (SD)" min={0.5} max={2.5} step={0.25} value={kd} onCommit={setKd} fmt={(v) => v.toFixed(2)} />
+          <Slider label="Baseline band (SD)" min={0.25} max={1} step={0.05} value={ks} onCommit={setKs} fmt={(v) => v.toFixed(2)} />
+          <Segmented role="tablist" label="Views" value={tab} options={TABS} onChange={setTab} />
+        </>
+      }>
+      <Split aside={aside}>{body}</Split>
+    </View>
   );
 }
 
 function Latest({ h }: { h: Headline }) {
+  const cell = (l: string, v: React.ReactNode) => <div><span className="l">{l}</span>{v}</div>;
   return (
-    <section className="card" data-testid="latest">
-      <div className="row">
-        <b>{h.day}</b>
-        <span className="chip" style={{ background: adviceColor(h.advice) }}>{h.advice ?? 'no advice yet'}</span>
-        <span className="mono">score {h.score} (range {h.lo} to {h.hi})</span>
-        <span className="mono">baseline {h.base_score} (band {h.swc_lo} to {h.swc_hi})</span>
-        {h.trend && <span className="muted">pattern: {h.trend}</span>}
-      </div>
-      {h.advice_text && <p style={{ margin: '6px 0 0' }}>{h.advice_text}</p>}
-    </section>
+    <div className="strip" data-testid="latest">
+      {cell('Night', h.day)}
+      {cell('Advice', <span className="chip" style={{ background: adviceColor(h.advice) }}>{h.advice ?? 'no advice yet'}</span>)}
+      {cell('Score', `${h.score} (${h.lo} to ${h.hi})`)}
+      {cell('Baseline', `${h.base_score} (${h.swc_lo} to ${h.swc_hi})`)}
+      {h.trend && cell('Pattern', h.trend)}
+      {h.advice_text && <div style={{ flex: 1, minWidth: 200, font: '400 12.5px var(--font)', color: 'var(--muted)' }}>{h.advice_text}</div>}
+    </div>
   );
 }
 
@@ -151,8 +148,8 @@ function HrvNotes({ r, tab }: { r: Result; tab: string }) {
 
 // ---- Baseline -------------------------------------------------------------------------------------------------
 
-function BaselineChart({ r, from, job }: { r: Result; from: number; job: unknown }) {
-  const v = useView(r.scored, from);
+function BaselineChart({ r, from, to, job }: { r: Result; from: number; to: number; job: unknown }) {
+  const v = useView(r.scored, from, to);
   const c = useMemo(() => {
     const ms = (n: string) => v.get(n).map(Math.exp);
     const lines = [
@@ -171,16 +168,18 @@ function BaselineChart({ r, from, job }: { r: Result; from: number; job: unknown
     <ChartCard title="Nightly HRV against your normal range" method="baseline.normal_range" job={job}
       subtitle="Dots: nights. Line: 7-night baseline. Light band: range for a night; blue band: range for the baseline; dotted: Garmin's balanced band">
       <Legend items={[{ color: ADVICE_COLORS.normal, label: 'normal' }, { color: ADVICE_COLORS.high, label: 'high' }, { color: ADVICE_COLORS.watch, label: 'watch' }, { color: ADVICE_COLORS.easy, label: 'keep it easy' }, { color: ADVICE_COLORS.back_off, label: 'back off' }]} />
-      <TimeChart label="Nightly HRV against the normal range" days={v.days} lines={c.lines} bands={bands} dots={dots} log height={330} yTitle="rMSSD (ms, log scale)"
-        readout={(i) => `${isoDay(v.days[i]!)}  rMSSD ${finite(c.rmssd[i]) ? c.rmssd[i]!.toFixed(0) : '-'} ms  score ${finite(c.score[i]) ? c.score[i]!.toFixed(1) : '-'}  baseline ${finite(c.bscore[i]) ? c.bscore[i]!.toFixed(1) : '-'}  ${c.advice[i] ?? ''}  Garmin ${finite(c.garmin[i]) ? c.garmin[i] : '-'} ${(c.gstat[i] ?? '').toLowerCase()}  load ${finite(c.load[i]) ? c.load[i]!.toFixed(0) : '-'}`} />
+      <Fill>{({ h }) => (
+        <TimeChart label="Nightly HRV against the normal range" days={v.days} lines={c.lines} bands={bands} dots={dots} log height={h} yTitle="rMSSD (ms, log scale)"
+          readout={(i) => `${isoDay(v.days[i]!)}  rMSSD ${finite(c.rmssd[i]) ? c.rmssd[i]!.toFixed(0) : '-'} ms  score ${finite(c.score[i]) ? c.score[i]!.toFixed(1) : '-'}  baseline ${finite(c.bscore[i]) ? c.bscore[i]!.toFixed(1) : '-'}  ${c.advice[i] ?? ''}  Garmin ${finite(c.garmin[i]) ? c.garmin[i] : '-'} ${(c.gstat[i] ?? '').toLowerCase()}  load ${finite(c.load[i]) ? c.load[i]!.toFixed(0) : '-'}`} />
+      )}</Fill>
     </ChartCard>
   );
 }
 
 // ---- Trends ---------------------------------------------------------------------------------------------------
 
-function TrendsCharts({ r, from }: { r: Result; from: number }) {
-  const v = useView(r.scored, from);
+function TrendsCharts({ r, from, to }: { r: Result; from: number; to: number }) {
+  const v = useView(r.scored, from, to);
   const t = useMemo(() => {
     const trend = v.gets('trend');
     const shade: Shade[] = [];
@@ -199,21 +198,29 @@ function TrendsCharts({ r, from }: { r: Result; from: number }) {
   }, [v]);
   if (!v.days.length) return <Missing needs="nights with HRV in this span" />;
   const noHr = t.hr[0]!.y.every((x) => !Number.isFinite(x));
-  const panel = (name: string, lines: typeof t.base, fmt: (x: number) => string, h = 150) => (
-    <TimeChart label={name} days={v.days} lines={lines} shade={t.shade} height={h} idle={name} sync="hrv-trends"
-      readout={(i) => `${isoDay(v.days[i]!)}  ${name} ${finite(lines[0]!.y[i]) ? fmt(lines[0]!.y[i]!) : '-'}  ${t.trend[i] ?? ''}`} />
+  const panel = (name: string, lines: typeof t.base, fmt: (x: number) => string) => (
+    <Fill style={PIN}>{({ h }) => (
+      <TimeChart label={name} days={v.days} lines={lines} shade={t.shade} height={h} idle={name} sync="hrv-trends"
+        readout={(i) => `${isoDay(v.days[i]!)}  ${name} ${finite(lines[0]!.y[i]) ? fmt(lines[0]!.y[i]!) : '-'}  ${t.trend[i] ?? ''}`} />
+    )}</Fill>
   );
   return (
     <ChartCard title="Four weekly signals and the pattern they make" method="hrv.trends" job={{ kind: 'hrv4t' }}
       subtitle="Shaded: nights where the 14-night slopes form one of HRV4Training's patterns">
       <Legend items={Object.entries(TREND_COLORS).map(([label, color]) => ({ label, color }))} />
-      {panel('HRV baseline (ms)', t.base, (x) => x.toFixed(0), 170)}
-      {noHr ? <Missing needs="sleeping heart rate (sleeps.avg_hr)" /> : (
-        <>
-          {panel('Sleeping HR (bpm)', t.hr, (x) => x.toFixed(1))}
-          {panel('CV of ln rMSSD (%)', t.cv, (x) => x.toFixed(2))}
-          {panel('rMSSD / mean RR', t.norm, (x) => x.toFixed(3))}
-        </>
+      {noHr ? (
+        <Stack weights={[1.13, 1]}>
+          {[panel('HRV baseline (ms)', t.base, (x) => x.toFixed(0)), <Missing needs="sleeping heart rate (sleeps.avg_hr)" />]}
+        </Stack>
+      ) : (
+        <Stack weights={[1.13, 1, 1, 1]}>
+          {[
+            panel('HRV baseline (ms)', t.base, (x) => x.toFixed(0)),
+            panel('Sleeping HR (bpm)', t.hr, (x) => x.toFixed(1)),
+            panel('CV of ln rMSSD (%)', t.cv, (x) => x.toFixed(2)),
+            panel('rMSSD / mean RR', t.norm, (x) => x.toFixed(3)),
+          ]}
+        </Stack>
       )}
     </ChartCard>
   );
@@ -240,10 +247,11 @@ function ResponseCharts({ r }: { r: Result }) {
   const maxLoad = Math.max(10, ...pts.map((p) => p.load));
   const legend = CLASSES.map((c) => ({ label: c, color: LOAD_COLORS[c] }));
   return (
-    <div className="cols">
+    <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
       <ChartCard title="Nights after training" method="hrv.response" job={{ kind: 'hrv4t' }} subtitle="Mean and 95 % interval, night 1 = the night right after">
         <Legend items={legend} />
-        <Plot height={290} x={{ domain: [0.5, 3.5], ticks: [1, 2, 3].map((v) => ({ v, label: `night ${v}` })), noGrid: true }} y={{ domain: [y0, y1], label: 'vs baseline (%)' }} label="Nights after training by load class">
+        <Fill>{({ h }) => (
+        <Plot height={h} x={{ domain: [0.5, 3.5], ticks: [1, 2, 3].map((v) => ({ v, label: `night ${v}` })), noGrid: true }} y={{ domain: [y0, y1], label: 'vs baseline (%)' }} label="Nights after training by load class">
           {({ sx, sy }) => (
             <>
               <line x1={0} x2={sx(3.5)} y1={sy(0)} y2={sy(0)} stroke={PAL.muted} strokeDasharray="3 3" />
@@ -260,11 +268,13 @@ function ResponseCharts({ r }: { r: Result }) {
             </>
           )}
         </Plot>
+        )}</Fill>
       </ChartCard>
       <ChartCard title="Dose and response" method="hrv.response" job={{ kind: 'hrv4t' }} subtitle="Every night after a training day; line: local regression">
         <Legend items={legend} />
         {pts.length < 5 ? <Missing needs="nights after training days" /> : (
-          <Plot height={290} x={{ domain: [0, maxLoad], scale: 'sqrt', label: 'Training load the day before' }} y={{ domain: [-40, 40], clamp: true, label: 'Night vs baseline (%)' }} label="Training load against the next night's HRV">
+          <Fill>{({ h }) => (
+          <Plot height={h} x={{ domain: [0, maxLoad], scale: 'sqrt', label: 'Training load the day before' }} y={{ domain: [-40, 40], clamp: true, label: 'Night vs baseline (%)' }} label="Training load against the next night's HRV">
             {({ sx, sy }) => (
               <>
                 <line x1={0} x2={sx(maxLoad)} y1={sy(0)} y2={sy(0)} stroke={PAL.muted} strokeDasharray="3 3" />
@@ -273,6 +283,7 @@ function ResponseCharts({ r }: { r: Result }) {
               </>
             )}
           </Plot>
+          )}</Fill>
         )}
       </ChartCard>
     </div>
@@ -283,19 +294,19 @@ function ResponseCharts({ r }: { r: Result }) {
 
 const hexRgb = (c: string): [number, number, number] => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 
-function InsideNight({ r, from }: { r: Result; from: number }) {
+function InsideNight({ r, from, to }: { r: Result; from: number; to: number }) {
   const [hover, setHover] = useState<string>('');
   const bc = r.barcode;
   const g = useMemo(() => {
     const day = col(bc, 'day'), h = col(bc, 'h'), v = col(bc, 'rmssd');
-    const rows = [...new Set(day.filter((d) => d >= from))].sort((a, b) => a - b);
+    const rows = [...new Set(day.filter((d) => d >= from && d <= to))].sort((a, b) => a - b);
     if (!rows.length) return null;
     const width = 60, rowOf = new Map(rows.map((d, i) => [d, i]));
     const grid = new Float64Array(rows.length * width).fill(NaN);
     const vals: number[] = [];
     const bins = new Map<number, number[]>();
     day.forEach((d, i) => {
-      if (d < from || !finite(v[i])) return;
+      if (d < from || d > to || !finite(v[i])) return;
       const k = Math.min(width - 1, Math.round(h[i]! * 6));
       grid[rowOf.get(d)! * width + k] = v[i]!;
       vals.push(v[i]!);
@@ -320,7 +331,7 @@ function InsideNight({ r, from }: { r: Result; from: number }) {
       return { h: k / 6, med: quantile(z, 0.5), q1: quantile(z, 0.25), q3: quantile(z, 0.75) };
     });
     return { rows, width, rgba, prof, lo, md, hi, grid };
-  }, [bc, from]);
+  }, [bc, from, to]);
   if (!g) return <ChartCard title="Every night, five minutes at a time" method="hrv.inside_night" job={{ kind: 'hrv4t' }}><Missing needs="five-minute HRV values (hrv5) with sleep onsets" /></ChartCard>;
   const stages = (() => {
     const s = txt(r.stage_hrv, 'stage'), rel = col(r.stage_hrv, 'rel'), q1 = col(r.stage_hrv, 'q1'), q3 = col(r.stage_hrv, 'q3'), n = col(r.stage_hrv, 'n');
@@ -336,18 +347,21 @@ function InsideNight({ r, from }: { r: Result; from: number }) {
   const sensMax = Math.max(0.1, ...sens.map((s) => s.e)) * 1.15, sensMin = Math.min(0, ...sens.map((s) => s.e));
   const job = { kind: 'hrv4t' };
   return (
-    <div className="cols" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
+    <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gridTemplateRows: 'minmax(0,1fr)' }}>
       <ChartCard title="Every night, five minutes at a time" method="hrv.inside_night" job={job} subtitle="One row per night (newest at the bottom), colour: rMSSD">
         <div className="mono muted" style={{ fontSize: 12, minHeight: 18 }}>{hover || `rMSSD from ${g.lo.toFixed(0)} (dark) through ${g.md.toFixed(0)} (teal) to ${g.hi.toFixed(0)} ms (pale)`}</div>
-        <Raster rgba={g.rgba} width={g.width} height={g.rows.length} rowPx={g.rows.length > 250 ? 2 : 3}
-          onHover={(row, c) => { const v = g.grid[row * g.width + c]; setHover(`${isoDay(g.rows[row]!)}  ${(c / 6).toFixed(1)} h in  ${Number.isFinite(v) ? `${v!.toFixed(0)} ms` : 'no value'}`); }} />
+        <Fill>{() => (
+          <Raster fit rgba={g.rgba} width={g.width} height={g.rows.length}
+            onHover={(row, c) => { const v = g.grid[row * g.width + c]; setHover(`${isoDay(g.rows[row]!)}  ${(c / 6).toFixed(1)} h in  ${Number.isFinite(v) ? `${v!.toFixed(0)} ms` : 'no value'}`); }} />
+        )}</Fill>
         <div className="mono muted" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>{[0, 2, 4, 6, 8, 10].map((h) => <span key={h}>{h} h</span>)}</div>
         <div className="muted" style={{ fontSize: 11, textAlign: 'center' }}>Hours since falling asleep</div>
       </ChartCard>
-      <div className="stack">
+      <div className="vgrid" style={{ gridTemplateRows: 'minmax(0,1fr) minmax(0,1fr) minmax(0,0.8fr)' }}>
         <ChartCard title="The typical night" method="hrv.inside_night" job={job} subtitle="Median and middle half; amber: the first-4-hours window">
           {g.prof.length < 2 ? <Missing needs="at least 10 nights of five-minute values" /> : (
-            <Plot height={170} x={{ domain: [0, 10], label: 'Hours since falling asleep' }} y={{ domain: profY, label: 'rMSSD (ms)' }} label="Typical night: median and middle half of rMSSD">
+            <Fill>{({ h }) => (
+            <Plot height={h} x={{ domain: [0, 10], label: 'Hours since falling asleep' }} y={{ domain: profY, label: 'rMSSD (ms)' }} label="Typical night: median and middle half of rMSSD">
               {({ sx, sy }) => (
                 <>
                   <rect x={sx(0.5)} width={sx(4.5) - sx(0.5)} y={0} height={sy(profY[0])} fill={PAL.hr} opacity={0.1} />
@@ -356,11 +370,13 @@ function InsideNight({ r, from }: { r: Result; from: number }) {
                 </>
               )}
             </Plot>
+            )}</Fill>
           )}
         </ChartCard>
         <ChartCard title="By sleep stage" method="hrv.inside_night" job={job} subtitle="Garmin's wrist-estimated stages; five-minute values, median and middle half">
           {!stages.length ? <Missing needs="sleep stages (stages table)" /> : (
-            <Plot height={150} margin={{ l: 56 }} x={{ domain: [sMin, sMax], label: "vs the night's mean (%)" }} y={{ domain: [-0.5, stages.length - 0.5], ticks: stages.map((s, i) => ({ v: stages.length - 1 - i, label: s.k })), noGrid: true }} label="HRV by sleep stage">
+            <Fill>{({ h }) => (
+            <Plot height={h} margin={{ l: 56 }} x={{ domain: [sMin, sMax], label: "vs the night's mean (%)" }} y={{ domain: [-0.5, stages.length - 0.5], ticks: stages.map((s, i) => ({ v: stages.length - 1 - i, label: s.k })), noGrid: true }} label="HRV by sleep stage">
               {({ sx, sy }) => (
                 <>
                   <line x1={sx(0)} x2={sx(0)} y1={0} y2={sy(-0.5)} stroke={PAL.muted} strokeDasharray="3 3" />
@@ -376,16 +392,19 @@ function InsideNight({ r, from }: { r: Result; from: number }) {
                 </>
               )}
             </Plot>
+            )}</Fill>
           )}
         </ChartCard>
         <ChartCard title="Which number sees training" method="hrv.inside_night" job={job} subtitle="Bigger is more sensitive">
           {!sens.length ? <Missing needs="hard and rest training days" /> : (
-            <Plot height={110} margin={{ l: 96 }} x={{ domain: [sensMin, sensMax], label: 'Rest night minus hard night (SD)' }} y={{ domain: [-0.5, sens.length - 0.5], ticks: sens.map((s, i) => ({ v: sens.length - 1 - i, label: s.k })), noGrid: true }} label="Sensitivity of three HRV measures to training">
+            <Fill>{({ h }) => (
+            <Plot height={h} margin={{ l: 96 }} x={{ domain: [sensMin, sensMax], label: 'Rest night minus hard night (SD)' }} y={{ domain: [-0.5, sens.length - 0.5], ticks: sens.map((s, i) => ({ v: sens.length - 1 - i, label: s.k })), noGrid: true }} label="Sensitivity of three HRV measures to training">
               {({ sx, sy }) => sens.map((s, i) => {
                 const y = sy(sens.length - 1 - i), bh = Math.abs(sy(0.3) - sy(-0.3));
                 return <rect key={s.k} x={Math.min(sx(0), sx(s.e))} width={Math.abs(sx(s.e) - sx(0))} y={y - bh / 2} height={bh} rx={3} fill={PAL.hr}><title>{`${s.k}: ${s.e.toFixed(2)} SD`}</title></rect>;
               })}
             </Plot>
+            )}</Fill>
           )}
         </ChartCard>
       </div>
@@ -396,8 +415,8 @@ const rgb = (c: [number, number, number]) => `#${c.map((v) => v.toString(16).pad
 
 // ---- Model ----------------------------------------------------------------------------------------------------
 
-function ModelChart({ r, from }: { r: Result; from: number }) {
-  const v = useView(r.model_view, from);
+function ModelChart({ r, from, to }: { r: Result; from: number; to: number }) {
+  const v = useView(r.model_view, from, to);
   const m = useMemo(() => {
     const pred = v.get('pred'), sd = v.get('pred_sd'), z = v.get('z');
     return {
@@ -414,8 +433,10 @@ function ModelChart({ r, from }: { r: Result; from: number }) {
   return (
     <ChartCard title="What each night should have been" method="hrv.state_space" job={{ kind: 'hrv4t' }}
       subtitle="White: the level; violet: prediction with yesterday's load and its 95 % band; red: nights more than 2 SD off">
-      <TimeChart label="Model expected HRV with 95 % band" days={v.days} lines={m.lines} bands={bands} dots={dots} log height={320} yTitle="rMSSD (ms, log scale)"
-        readout={(i) => `${isoDay(v.days[i]!)}  rMSSD ${finite(m.rmssd[i]) ? m.rmssd[i]!.toFixed(0) : '-'}  expected ${finite(m.pred[i]) ? Math.exp(m.pred[i]!).toFixed(0) : '-'}  surprise ${finite(m.z[i]) ? (m.z[i]! >= 0 ? '+' : '') + m.z[i]!.toFixed(2) : '-'}  load ${finite(m.load[i]) ? m.load[i]!.toFixed(0) : '-'}`} />
+      <Fill>{({ h }) => (
+        <TimeChart label="Model expected HRV with 95 % band" days={v.days} lines={m.lines} bands={bands} dots={dots} log height={h} yTitle="rMSSD (ms, log scale)"
+          readout={(i) => `${isoDay(v.days[i]!)}  rMSSD ${finite(m.rmssd[i]) ? m.rmssd[i]!.toFixed(0) : '-'}  expected ${finite(m.pred[i]) ? Math.exp(m.pred[i]!).toFixed(0) : '-'}  surprise ${finite(m.z[i]) ? (m.z[i]! >= 0 ? '+' : '') + m.z[i]!.toFixed(2) : '-'}  load ${finite(m.load[i]) ? m.load[i]!.toFixed(0) : '-'}`} />
+      )}</Fill>
     </ChartCard>
   );
 }

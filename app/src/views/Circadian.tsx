@@ -1,10 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, type CSSProperties, type ReactNode } from 'react';
 import type { Table } from '@wl/schema';
 import { PAL, clock, num } from '@wl/views';
 import { useApp } from '../lib/app';
 import { useJob } from '../lib/useJob';
 import { col } from '../lib/util';
 import { useNumParam, useParam } from '../lib/router';
+import { Fill, Stack } from '../ui/Fill';
+import { FocusList, type FocusItem } from '../ui/FocusList';
+import { InspectorNotes } from '../ui/Inspector';
+import { View } from '../ui/View';
 import { Empty } from '../charts/small';
 import { ChartCard, Experimental } from '../charts/wellness/ChartCard';
 import { DesktopOnly } from '../charts/wellness/DesktopOnly';
@@ -14,6 +18,13 @@ import { densify, isNum, rolling } from '../charts/wellness/stats';
 import { useInputs } from '../charts/wellness/inputs';
 
 const hm = (v: number) => clock(v * 60);
+const DESC = 'How regular and well-timed your days are.';
+/** A Fill that is itself a Stack child: the Stack's wrapper is not a flex container, so it is pinned to the wrapper's box. */
+const PIN: CSSProperties = { position: 'absolute', inset: 0 };
+/** One chart that fills its panel */
+const F = ({ children }: { children(h: number): ReactNode }) => <Fill>{({ h }) => children(h)}</Fill>;
+/** One chart of several sharing a panel (inside a Stack) */
+const S = ({ children }: { children(h: number): ReactNode }) => <Fill style={PIN}>{({ h }) => children(h)}</Fill>;
 const TEAL = PAL.hrv, AMBER = PAL.hr, BLUE = PAL.base, RED = PAL.alert, VIOLET = PAL.violet;
 
 type Cols = Record<string, number[]>;
@@ -48,7 +59,7 @@ function CircadianView() {
     return { x: keep.map((i) => day[i]!), v: Object.fromEntries(names.map((n) => { const a = col(t, n); return [n, keep.map((i) => a[i]!)]; })) };
   }, [from, to]);
 
-  if (!have) return <div className="page"><h1>Circadian</h1><Empty>No data yet. Import or load the demo from the Data page.</Empty></div>;
+  if (!have) return <View title="Circadian" desc={DESC}><Empty>No data yet. Import or load the demo from the Data page.</Empty></View>;
 
   const gridNeeds = (...names: string[]) => (inputs.ready ? (inputs.missing(...names) ?? null) : null);
   const noRows = (t: unknown, ...names: string[]): string | null => (t ? (gridNeeds(...names) ?? 'at least 14 days with data in this range') : null);
@@ -82,127 +93,175 @@ function CircadianView() {
   const asleep = act.data?.arrays.asleep as Uint8Array | undefined;
   const actNeeds = inputs.ready && inputs.missing('steps') ? 'steps' : !meta || meta.height === 0 ? (act.data ? 'at least 2 days with activity data in this range' : null) : null;
 
-  const stat = (label: string, v: string) => <div key={label}><div className="muted" style={{ fontSize: 11 }}>{label}</div><div className="mono" style={{ fontSize: 16 }}>{v}</div></div>;
+  const stat = (label: string, v: string) => <div key={label}><span className="l">{label}</span>{v}</div>;
   const lastOnset = last(np, 'l5_onset'), lastM10 = last(np, 'm10_onset');
 
-  return (
-    <div className="page">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>Circadian</h1>
-      </div>
-      <p className="muted">How regular and well-timed your days are, from steps, heart rate and sleep. Rolling measures use the latest 14 days (7 for the fits) ending on each date.</p>
+  const exp = <Experimental />;
+  const items: FocusItem[] = [
+    { group: 'Rest and activity', id: 'actogram', title: 'Actogram', na: actNeeds },
+    { group: 'Rest and activity', id: 'stability', title: 'Stability and amplitude', na: need.np },
+    { group: 'Rest and activity', id: 'fragmentation', title: 'Fragmentation', na: need.np },
+    { group: 'Rest and activity', id: 'l5m10', title: 'L5 and M10 level', na: need.np },
+    { group: 'Rest and activity', id: 'l5m10clock', title: 'L5 and M10 clock time', na: need.np },
+    { group: 'Sleep regularity and timing', id: 'sri', title: 'Sleep Regularity Index', na: need.sri },
+    { group: 'Sleep regularity and timing', id: 'sjl', title: 'Social jet lag', na: need.chr },
+    { group: 'Sleep regularity and timing', id: 'cpd', title: 'Composite phase deviation', na: need.chr },
+    { group: 'Sleep regularity and timing', id: 'debt', title: 'Sleep debt', na: need.debt },
+    { group: 'Daily rhythm', id: 'acrophase', title: 'Cosinor acrophase', na: need.cos },
+    { group: 'Daily rhythm', id: 'amplitude', title: 'Cosinor amplitude', na: need.cos },
+    { group: 'Daily rhythm', id: 'hrpeak', title: 'Heart rate rhythm: peak and trough', na: need.hr },
+    { group: 'Daily rhythm', id: 'hrsize', title: 'Heart rate rhythm: size', na: need.hr },
+    { group: 'Model', id: 'dlmo', title: 'Estimated melatonin onset', na: need.dl, badge: exp },
+  ];
+  const job = { kind: 'circadian' as const, from, to };
 
-      <div className="card" style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }} data-testid="circadian-summary">
-        {stat('Interdaily stability', num(last(np, 'is'), 2))}
-        {stat('Intradaily variability', num(last(np, 'iv'), 2))}
-        {stat('Relative amplitude', num(last(np, 'ra'), 2))}
-        {stat('L5 starts', Number.isFinite(lastOnset) ? hm(lastOnset) : '\u2013')}
-        {stat('M10 starts', Number.isFinite(lastM10) ? hm(lastM10) : '\u2013')}
-        {stat('Sleep regularity', num(last(sri, 'sri'), 0))}
-        {stat('Social jet lag', Number.isFinite(last(chr, 'sjl')) ? `${last(chr, 'sjl').toFixed(1)} h` : '\u2013')}
-        {stat('Sleep debt (14 nights)', Number.isFinite(last(debt, 'debt14')) ? `${last(debt, 'debt14').toFixed(1)} h` : '\u2013')}
-      </div>
-
-      <ChartCard
-        title="Actogram"
-        sub={`Each row is two ${p.toFixed(1)}-hour periods side by side, so a rhythm that drifts reads as a slanted band. Bright: more steps. Blue tint: asleep.`}
-        method="circadian.nonparametric"
-        job={{ kind: 'actogram', from, to, period_h: p }}
-        needs={actNeeds}
-        loading={act.loading && !act.data}
-        error={act.error}
-        actions={
-          <>
-            <label className="row" style={{ gap: 6 }}>Period <input type="range" min={23.5} max={24.5} step={0.1} value={p} onChange={(e) => setPeriod(Math.round(+e.target.value * 10) / 10)} aria-label="Actogram period in hours" /><span className="mono">{p.toFixed(1)} h</span></label>
-            <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={overlay !== '0'} onChange={(e) => setOverlay(e.target.checked ? '1' : '0')} /> Sleep</label>
-          </>
-        }
-      >
-        {meta && rgba && meta.height > 0 && <Actogram rgba={rgba} asleep={asleep} width={meta.width} height={meta.height} days={meta.days} periodH={p} overlay={overlay !== '0'} />}
-      </ChartCard>
-
-      <h2 style={{ marginTop: 18 }}>Rest and activity</h2>
-      <div className="grid2">
-        <ChartCard title="Stability and amplitude" sub="IS: how alike the days are (1 is identical). RA: contrast between the busiest 10 hours and quietest 5." method="circadian.nonparametric" job={{ kind: 'circadian', from, to }} needs={need.np} loading={loading} error={err}>
-          {np && <TimeSeries x={np.x} series={[line('IS', np.v.is!, TEAL), line('RA', np.v.ra!, AMBER)]} height={170} yRange={[0, 1]} sync="np" yFmt={(v) => v.toFixed(1)} />}
+  const render = (it: FocusItem) => {
+    switch (it.id) {
+      case 'actogram': return (
+        <ChartCard
+          title="Actogram"
+          sub={`Each row is two ${p.toFixed(1)}-hour periods side by side, so a rhythm that drifts reads as a slanted band. Bright: more steps. Blue tint: asleep.`}
+          method="circadian.nonparametric"
+          job={{ kind: 'actogram', from, to, period_h: p }}
+          needs={actNeeds}
+          loading={act.loading && !act.data}
+          error={act.error}
+          actions={
+            <>
+              <label className="row" style={{ gap: 6 }}>Period <input type="range" min={23.5} max={24.5} step={0.1} value={p} onChange={(e) => setPeriod(Math.round(+e.target.value * 10) / 10)} aria-label="Actogram period in hours" /><span className="mono">{p.toFixed(1)} h</span></label>
+              <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={overlay !== '0'} onChange={(e) => setOverlay(e.target.checked ? '1' : '0')} /> Sleep</label>
+            </>
+          }
+        >
+          {meta && rgba && meta.height > 0 && <Fill>{({ h }) => <Actogram rgba={rgba} asleep={asleep} width={meta.width} height={meta.height} days={meta.days} periodH={p} overlay={overlay !== '0'} fitHeight={h} />}</Fill>}
         </ChartCard>
-        <ChartCard title="Fragmentation" sub="IV: how much activity jumps hour to hour (higher is more fragmented)" method="circadian.nonparametric" job={{ kind: 'circadian', from, to }} needs={need.np} loading={loading} error={err}>
-          {np && <TimeSeries x={np.x} series={[line('IV', np.v.iv!, VIOLET)]} height={170} sync="np" yFmt={(v) => v.toFixed(2)} />}
+      );
+      case 'stability': return (
+        <ChartCard title="Stability and amplitude" sub="IS: how alike the days are (1 is identical). RA: contrast between the busiest 10 hours and quietest 5." method="circadian.nonparametric" job={job} needs={need.np} loading={loading} error={err}>
+          {np && <F>{(h) => <TimeSeries x={np.x} series={[line('IS', np.v.is!, TEAL), line('RA', np.v.ra!, AMBER)]} height={h} yRange={[0, 1]} sync="np" yFmt={(v) => v.toFixed(1)} />}</F>}
         </ChartCard>
-        <ChartCard title="L5 and M10 level" sub="Steps per hour in the quietest 5 hours (L5) and busiest 10 hours (M10) of the average day" method="circadian.nonparametric" job={{ kind: 'circadian', from, to }} needs={need.np} loading={loading} error={err}>
-          {np && <TimeSeries x={np.x} series={[line('M10', np.v.m10!, AMBER), line('L5', np.v.l5!, BLUE)]} height={170} sync="np" yFmt={(v) => v.toFixed(0)} />}
+      );
+      case 'fragmentation': return (
+        <ChartCard title="Fragmentation" sub="IV: how much activity jumps hour to hour (higher is more fragmented)" method="circadian.nonparametric" job={job} needs={need.np} loading={loading} error={err}>
+          {np && <F>{(h) => <TimeSeries x={np.x} series={[line('IV', np.v.iv!, VIOLET)]} height={h} sync="np" yFmt={(v) => v.toFixed(2)} />}</F>}
         </ChartCard>
-        <ChartCard title="L5 and M10 clock time" sub="When those windows start" method="circadian.nonparametric" job={{ kind: 'circadian', from, to }} needs={need.np} loading={loading} error={err}>
-          {np && <TimeSeries x={np.x} series={[dots('M10 starts', np.v.m10_onset!, AMBER), dots('L5 starts', np.v.l5_onset!, BLUE)]} height={170} yRange={[0, 24]} ySplit={4} sync="np" yFmt={hm} />}
+      );
+      case 'l5m10': return (
+        <ChartCard title="L5 and M10 level" sub="Steps per hour in the quietest 5 hours (L5) and busiest 10 hours (M10) of the average day" method="circadian.nonparametric" job={job} needs={need.np} loading={loading} error={err}>
+          {np && <F>{(h) => <TimeSeries x={np.x} series={[line('M10', np.v.m10!, AMBER), line('L5', np.v.l5!, BLUE)]} height={h} sync="np" yFmt={(v) => v.toFixed(0)} />}</F>}
         </ChartCard>
-      </div>
-
-      <h2 style={{ marginTop: 18 }}>Sleep regularity and timing</h2>
-      <div className="grid2">
-        <ChartCard title="Sleep Regularity Index" sub="The chance of being in the same sleep state at the same clock time on consecutive days, over 14 days (100 is perfectly regular)" method="circadian.sri" job={{ kind: 'circadian', from, to }} needs={need.sri} loading={loading} error={err}>
-          {sri && <TimeSeries x={sri.x} series={[line('SRI', sri.v.sri!, TEAL)]} height={170} yRange={[0, 100]} yFmt={(v) => v.toFixed(0)} />}
+      );
+      case 'l5m10clock': return (
+        <ChartCard title="L5 and M10 clock time" sub="When those windows start" method="circadian.nonparametric" job={job} needs={need.np} loading={loading} error={err}>
+          {np && <F>{(h) => <TimeSeries x={np.x} series={[dots('M10 starts', np.v.m10_onset!, AMBER), dots('L5 starts', np.v.l5_onset!, BLUE)]} height={h} yRange={[0, 24]} ySplit={4} sync="np" yFmt={hm} />}</F>}
         </ChartCard>
-        <ChartCard title="Social jet lag" sub="Midsleep on free days minus workdays, over a rolling 4 weeks; MSFsc is the free-day midpoint corrected for sleeping in" method="circadian.chronotype" job={{ kind: 'circadian', from, to }} needs={need.chr} loading={loading} error={err}>
+      );
+      case 'sri': return (
+        <ChartCard title="Sleep Regularity Index" sub="The chance of being in the same sleep state at the same clock time on consecutive days, over 14 days (100 is perfectly regular)" method="circadian.sri" job={job} needs={need.sri} loading={loading} error={err}>
+          {sri && <F>{(h) => <TimeSeries x={sri.x} series={[line('SRI', sri.v.sri!, TEAL)]} height={h} yRange={[0, 100]} yFmt={(v) => v.toFixed(0)} />}</F>}
+        </ChartCard>
+      );
+      case 'sjl': return (
+        <ChartCard title="Social jet lag" sub="Midsleep on free days minus workdays, over a rolling 4 weeks; MSFsc is the free-day midpoint corrected for sleeping in" method="circadian.chronotype" job={job} needs={need.chr} loading={loading} error={err}>
           {chr && (
-            <>
-              <TimeSeries x={chr.x} series={[line('Social jet lag', chr.v.sjl!, AMBER), line('Corrected (sleep-debt adjusted)', chr.v.sjl_sc!, BLUE, [4, 3])]} height={110} sync="chr" yFmt={(v) => `${v.toFixed(1)} h`} />
-              <TimeSeries x={chr.x} series={[line('MSFsc', chr.v.msf_sc!, VIOLET)]} height={110} sync="chr" yFmt={hm} />
-            </>
+            <Stack>
+              {[
+                <S>{(h) => <TimeSeries x={chr.x} series={[line('Social jet lag', chr.v.sjl!, AMBER), line('Corrected (sleep-debt adjusted)', chr.v.sjl_sc!, BLUE, [4, 3])]} height={h} sync="chr" yFmt={(v) => `${v.toFixed(1)} h`} />}</S>,
+                <S>{(h) => <TimeSeries x={chr.x} series={[line('MSFsc', chr.v.msf_sc!, VIOLET)]} height={h} sync="chr" yFmt={hm} />}</S>,
+              ]}
+            </Stack>
           )}
         </ChartCard>
-        <ChartCard title="Composite phase deviation" sub="How far each night's midpoint sat from your last four weeks, combined with the change since the night before (hours)" method="circadian.chronotype" job={{ kind: 'circadian', from, to }} needs={need.chr} loading={loading} error={err}>
-          {chr && <TimeSeries x={chr.x} series={[dots('CPD', chr.v.cpd!, RED), line('7-day mean', rolling(chr.v.cpd!, 7, 3), TEAL)]} height={170} yRange={[0, null]} yFmt={(v) => v.toFixed(1)} />}
+      );
+      case 'cpd': return (
+        <ChartCard title="Composite phase deviation" sub="How far each night's midpoint sat from your last four weeks, combined with the change since the night before (hours)" method="circadian.chronotype" job={job} needs={need.chr} loading={loading} error={err}>
+          {chr && <F>{(h) => <TimeSeries x={chr.x} series={[dots('CPD', chr.v.cpd!, RED), line('7-day mean', rolling(chr.v.cpd!, 7, 3), TEAL)]} height={h} yRange={[0, null]} yFmt={(v) => v.toFixed(1)} />}</F>}
         </ChartCard>
-        <ChartCard title="Sleep debt" sub="Hours short of your sleep need: weighted toward recent nights (top) and the plain sum of the last 14 nights (bottom)" method="circadian.sleep_debt" job={{ kind: 'circadian', from, to }} needs={need.debt} loading={loading} error={err}>
+      );
+      case 'debt': return (
+        <ChartCard title="Sleep debt" sub="Hours short of your sleep need: weighted toward recent nights (top) and the plain sum of the last 14 nights (bottom)" method="circadian.sleep_debt" job={job} needs={need.debt} loading={loading} error={err}>
           {debt && (
-            <>
-              <TimeSeries x={debt.x} series={[line('h per night', debt.v.debt!, AMBER)]} height={110} sync="debt" yFmt={(v) => v.toFixed(1)} />
-              <TimeSeries x={debt.x} series={[line('14-night sum (h)', debt.v.debt14!, RED)]} height={110} sync="debt" yFmt={(v) => v.toFixed(0)} />
-            </>
+            <Stack>
+              {[
+                <S>{(h) => <TimeSeries x={debt.x} series={[line('h per night', debt.v.debt!, AMBER)]} height={h} sync="debt" yFmt={(v) => v.toFixed(1)} />}</S>,
+                <S>{(h) => <TimeSeries x={debt.x} series={[line('14-night sum (h)', debt.v.debt14!, RED)]} height={h} sync="debt" yFmt={(v) => v.toFixed(0)} />}</S>,
+              ]}
+            </Stack>
           )}
         </ChartCard>
-      </div>
-
-      <h2 style={{ marginTop: 18 }}>Daily rhythm</h2>
-      <div className="grid2">
-        <ChartCard title="Cosinor acrophase" sub="The clock hour a 24-hour cosine fitted to the last 7 days peaks, for activity and heart rate" method="circadian.cosinor" job={{ kind: 'circadian', from, to }} needs={need.cos} loading={loading} error={err}>
-          {cos && <TimeSeries x={cos.x} series={[dots('Activity peak', cos.v.act_acro!, AMBER), dots('Heart rate peak', cos.v.hr_acro!, RED)]} height={170} yRange={[0, 24]} ySplit={4} sync="cos" yFmt={hm} />}
+      );
+      case 'acrophase': return (
+        <ChartCard title="Cosinor acrophase" sub="The clock hour a 24-hour cosine fitted to the last 7 days peaks, for activity and heart rate" method="circadian.cosinor" job={job} needs={need.cos} loading={loading} error={err}>
+          {cos && <F>{(h) => <TimeSeries x={cos.x} series={[dots('Activity peak', cos.v.act_acro!, AMBER), dots('Heart rate peak', cos.v.hr_acro!, RED)]} height={h} yRange={[0, 24]} ySplit={4} sync="cos" yFmt={hm} />}</F>}
         </ChartCard>
-        <ChartCard title="Cosinor amplitude" sub="Half the swing of the fitted cosine: steps per hour (top), beats per minute (bottom)" method="circadian.cosinor" job={{ kind: 'circadian', from, to }} needs={need.cos} loading={loading} error={err}>
+      );
+      case 'amplitude': return (
+        <ChartCard title="Cosinor amplitude" sub="Half the swing of the fitted cosine: steps per hour (top), beats per minute (bottom)" method="circadian.cosinor" job={job} needs={need.cos} loading={loading} error={err}>
           {cos && (
-            <>
-              <TimeSeries x={cos.x} series={[line('Activity', cos.v.act_amp!, AMBER)]} height={110} sync="cos" yFmt={(v) => v.toFixed(0)} />
-              <TimeSeries x={cos.x} series={[line('Heart rate', cos.v.hr_amp!, RED)]} height={110} sync="cos" yFmt={(v) => v.toFixed(1)} />
-            </>
+            <Stack>
+              {[
+                <S>{(h) => <TimeSeries x={cos.x} series={[line('Activity', cos.v.act_amp!, AMBER)]} height={h} sync="cos" yFmt={(v) => v.toFixed(0)} />}</S>,
+                <S>{(h) => <TimeSeries x={cos.x} series={[line('Heart rate', cos.v.hr_amp!, RED)]} height={h} sync="cos" yFmt={(v) => v.toFixed(1)} />}</S>,
+              ]}
+            </Stack>
           )}
         </ChartCard>
-        <ChartCard title="Heart rate rhythm: peak and trough" sub="Weekly fit of a cosine plus the effects of movement and sleep; the clock hours it is highest and lowest" method="circadian.hr_rhythm" job={{ kind: 'circadian', from, to }} needs={need.hr} loading={loading} error={err}>
-          {hr && <TimeSeries x={hr.x} series={[dots('Peak', hr.v.peak!, RED), dots('Trough', hr.v.trough!, BLUE)]} height={170} yRange={[0, 24]} ySplit={4} sync="hr" yFmt={hm} />}
+      );
+      case 'hrpeak': return (
+        <ChartCard title="Heart rate rhythm: peak and trough" sub="Weekly fit of a cosine plus the effects of movement and sleep; the clock hours it is highest and lowest" method="circadian.hr_rhythm" job={job} needs={need.hr} loading={loading} error={err}>
+          {hr && <F>{(h) => <TimeSeries x={hr.x} series={[dots('Peak', hr.v.peak!, RED), dots('Trough', hr.v.trough!, BLUE)]} height={h} yRange={[0, 24]} ySplit={4} sync="hr" yFmt={hm} />}</F>}
         </ChartCard>
-        <ChartCard title="Heart rate rhythm: size" sub="Amplitude of the daily cosine (bpm), and the effects of movement (bpm per log step) and of being asleep (bpm)" method="circadian.hr_rhythm" job={{ kind: 'circadian', from, to }} needs={need.hr} loading={loading} error={err}>
+      );
+      case 'hrsize': return (
+        <ChartCard title="Heart rate rhythm: size" sub="Amplitude of the daily cosine (bpm), and the effects of movement (bpm per log step) and of being asleep (bpm)" method="circadian.hr_rhythm" job={job} needs={need.hr} loading={loading} error={err}>
           {hr && (
-            <>
-              <TimeSeries x={hr.x} series={[line('Amplitude (bpm)', hr.v.amp!, RED)]} height={100} sync="hr" yFmt={(v) => v.toFixed(1)} />
-              <TimeSeries x={hr.x} series={[line('bpm per log step', hr.v.per_log_step!, AMBER)]} height={100} sync="hr" yFmt={(v) => v.toFixed(1)} />
-              <TimeSeries x={hr.x} series={[line('Sleep effect (bpm)', hr.v.sleep_effect!, BLUE)]} height={100} sync="hr" yFmt={(v) => v.toFixed(1)} />
-            </>
+            <Stack>
+              {[
+                <S>{(h) => <TimeSeries x={hr.x} series={[line('Amplitude (bpm)', hr.v.amp!, RED)]} height={h} sync="hr" yFmt={(v) => v.toFixed(1)} />}</S>,
+                <S>{(h) => <TimeSeries x={hr.x} series={[line('bpm per log step', hr.v.per_log_step!, AMBER)]} height={h} sync="hr" yFmt={(v) => v.toFixed(1)} />}</S>,
+                <S>{(h) => <TimeSeries x={hr.x} series={[line('Sleep effect (bpm)', hr.v.sleep_effect!, BLUE)]} height={h} sync="hr" yFmt={(v) => v.toFixed(1)} />}</S>,
+              ]}
+            </Stack>
           )}
         </ChartCard>
-      </div>
+      );
+      default: return (
+        <ChartCard
+          title="Estimated melatonin onset (Forger model)"
+          sub="A model of the body clock driven by a light level guessed from your sleep and movement. It is an estimate of the clock hour the evening melatonin rise would begin, not a measurement."
+          method="circadian.dlmo"
+          job={job}
+          needs={need.dl}
+          loading={loading}
+          error={err}
+          badge={exp}
+        >
+          {dl && <F>{(h) => <TimeSeries x={dl.x} series={[dots('Modelled DLMO', dl.v.dlmo!, VIOLET), line('7-day mean', rolling(dl.v.dlmo!, 7, 3), TEAL)]} height={h} yRange={[0, 24]} ySplit={4} yFmt={hm} />}</F>}
+        </ChartCard>
+      );
+    }
+  };
 
-      <ChartCard
-        title="Estimated melatonin onset (Forger model)"
-        sub="A model of the body clock driven by a light level guessed from your sleep and movement. It is an estimate of the clock hour the evening melatonin rise would begin, not a measurement."
-        method="circadian.dlmo"
-        job={{ kind: 'circadian', from, to }}
-        needs={need.dl}
-        loading={loading}
-        error={err}
-        badge={<Experimental />}
-      >
-        {dl && <TimeSeries x={dl.x} series={[dots('Modelled DLMO', dl.v.dlmo!, VIOLET), line('7-day mean', rolling(dl.v.dlmo!, 7, 3), TEAL)]} height={170} yRange={[0, 24]} ySplit={4} yFmt={hm} />}
-      </ChartCard>
-    </div>
+  return (
+    <View
+      title="Circadian"
+      desc={DESC}
+      strip={
+        <div className="strip" data-testid="circadian-summary">
+          {stat('Interdaily stability', num(last(np, 'is'), 2))}
+          {stat('Intradaily variability', num(last(np, 'iv'), 2))}
+          {stat('Relative amplitude', num(last(np, 'ra'), 2))}
+          {stat('L5 starts', Number.isFinite(lastOnset) ? hm(lastOnset) : '\u2013')}
+          {stat('M10 starts', Number.isFinite(lastM10) ? hm(lastM10) : '\u2013')}
+          {stat('Sleep regularity', num(last(sri, 'sri'), 0))}
+          {stat('Social jet lag', Number.isFinite(last(chr, 'sjl')) ? `${last(chr, 'sjl').toFixed(1)} h` : '\u2013')}
+          {stat('Sleep debt (14 nights)', Number.isFinite(last(debt, 'debt14')) ? `${last(debt, 'debt14').toFixed(1)} h` : '\u2013')}
+        </div>
+      }
+    >
+      <InspectorNotes><h2>About this view</h2><p>How regular and well-timed your days are, from steps, heart rate and sleep. Rolling measures use the latest 14 days (7 for the fits) ending on each date.</p></InspectorNotes>
+      <FocusList items={items} render={render} />
+    </View>
   );
 }
 
