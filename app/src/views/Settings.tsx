@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DEFAULT_SETTINGS, type Settings as S } from '@wl/schema';
 import { useApp } from '../lib/app';
 import { useH12, useTheme } from '../lib/prefs';
+import { Panel } from '../ui/Panel';
+import { View } from '../ui/View';
 
+const SECTIONS: [string, string][] = [['display', 'Display'], ['questions', 'Questions in the Inbox'], ['baselines', 'Baselines and sleep'], ['notifications', 'Notifications']];
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function Field({ id, label, help, children }: { id: string; label: string; help: ReactNode; children: ReactNode }) {
@@ -72,16 +75,28 @@ export default function Settings() {
     }
   };
 
-  return (
-    <div className="page" style={{ maxWidth: 900 }}>
-      <h1>Settings</h1>
-      <p className="muted">
-        Analysis settings are stored with your labels ({mode === 'server' ? 'on the server' : 'in this browser'}) and change the numbers the engine computes.
-        {demo && ' Demo data is showing: saved settings are real, the demo data is not.'}
-      </p>
+  const doc = useRef<HTMLDivElement>(null);
+  const go = (id: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    doc.current?.querySelector(`#sec-${id}`)?.scrollIntoView({ block: 'start' });
+  };
 
-      <div className="card">
-        <h2>Display</h2>
+  return (
+    <View title="Settings" desc="Analysis settings are stored with your labels.">
+      <div className="vgrid" style={{ gridTemplateColumns: '200px minmax(0,1fr)' }}>
+        <Panel testid="settings-nav">
+          <nav className="vnav" aria-label="Sections">
+            {SECTIONS.map(([id, t]) => <a key={id} href={`#sec-${id}`} onClick={go(id)}>{t}</a>)}
+          </nav>
+        </Panel>
+        <Panel scroll testid="settings-form">
+          <div ref={doc} style={{ maxWidth: 900 }}>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Stored {mode === 'server' ? 'on the server' : 'in this browser'}; they change the numbers the engine computes.
+              {demo && ' Demo data is showing: saved settings are real, the demo data is not.'}
+            </p>
+        <section className="method" id="sec-display">
+        <h2 style={{ margin: '0 0 4px', fontSize: 14 }}>Display</h2>
         <Field id="theme" label="Theme" help="Dark is the default. This choice stays on this device.">
           <select id="theme" value={theme} onChange={(e) => setTheme(e.target.value as 'dark' | 'light')}>
             <option value="dark">Dark</option>
@@ -94,10 +109,10 @@ export default function Settings() {
             <option value="12">12 hour</option>
           </select>
         </Field>
-      </div>
+        </section>
 
-      <div className="card">
-        <h2>Questions in the Inbox</h2>
+        <section className="method" id="sec-questions">
+        <h2 style={{ margin: '0 0 4px', fontSize: 14 }}>Questions in the Inbox</h2>
         <Field id="question_budget_per_week" label="Questions per week" help="The most questions the Inbox asks (and a notification mentions) in any 7 days. A likely illness may add one more. 0 turns asking off.">
           <NumBox id="question_budget_per_week" value={draft.question_budget_per_week} min={0} max={14} step={1} onChange={(v) => set('question_budget_per_week', Math.max(0, Math.round(v ?? 0)))} />
         </Field>
@@ -119,10 +134,10 @@ export default function Settings() {
         <Field id="cycle_tracking" label="Cycle tracking" help="Turn on if you track a menstrual cycle and want to log it as an event kind. Detection does not use it yet.">
           <input id="cycle_tracking" type="checkbox" checked={draft.cycle_tracking} onChange={(e) => set('cycle_tracking', e.target.checked)} />
         </Field>
-      </div>
+        </section>
 
-      <div className="card">
-        <h2>Baselines and sleep</h2>
+        <section className="method" id="sec-baselines">
+        <h2 style={{ margin: '0 0 4px', fontSize: 14 }}>Baselines and sleep</h2>
         <Field id="baseline_window" label="Baseline window" help="Nights behind each personal baseline (a robust median and spread). Shorter follows you faster and is noisier; the default is 28.">
           <NumBox id="baseline_window" value={draft.baseline_window} min={7} max={120} step={1} unit="nights" onChange={(v) => set('baseline_window', Math.round(v ?? DEFAULT_SETTINGS.baseline_window))} />
         </Field>
@@ -152,10 +167,10 @@ export default function Settings() {
             })}
           </span>
         </Field>
-      </div>
+        </section>
 
-      <div className="card">
-        <h2>Notifications</h2>
+        <section className="method" id="sec-notifications">
+        <h2 style={{ margin: '0 0 4px', fontSize: 14 }}>Notifications</h2>
         <Field id="notify_ntfy" label="ntfy" help="Send new questions to the ntfy topic configured on the server (NTFY_URL).">
           <input id="notify_ntfy" type="checkbox" checked={draft.notify_ntfy} onChange={(e) => set('notify_ntfy', e.target.checked)} />
         </Field>
@@ -166,14 +181,19 @@ export default function Settings() {
           <button id="notify_test" aria-label="Send test notification" disabled={mode !== 'server' || testing} onClick={sendTest}>{testing ? 'Sending...' : 'Send test notification'}</button>
           {testOut && <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>{testOut.map((l) => <li key={l} className={l.includes('failed') || l.startsWith('Could not') ? 'err' : ''}>{l}</li>)}</ul>}
         </Field>
-      </div>
+        </section>
 
-      {invalid && <p className="err">{invalid}</p>}
-      <div className="row">
-        <button className="primary" disabled={!dirty || !!invalid} onClick={save}>Save settings</button>
-        <button disabled={JSON.stringify(draft) === JSON.stringify(DEFAULT_SETTINGS)} onClick={() => setDraft({ ...DEFAULT_SETTINGS })}>Reset to defaults</button>
-        {dirty && <span className="muted">Unsaved changes</span>}
+          </div>
+          <div style={{ position: 'sticky', bottom: 0, background: 'var(--bg)', borderTop: '1px solid var(--line)', padding: '10px 0', marginTop: 8 }}>
+            {invalid && <p className="err" style={{ margin: '0 0 8px' }}>{invalid}</p>}
+            <div className="row">
+              <button className="primary" disabled={!dirty || !!invalid} onClick={save}>Save settings</button>
+              <button disabled={JSON.stringify(draft) === JSON.stringify(DEFAULT_SETTINGS)} onClick={() => setDraft({ ...DEFAULT_SETTINGS })}>Reset to defaults</button>
+              {dirty && <span className="muted">Unsaved changes</span>}
+            </div>
+          </div>
+        </Panel>
       </div>
-    </div>
+    </View>
   );
 }

@@ -8,6 +8,9 @@ import { col, txt } from '../lib/util';
 import { LineChart, type BandSpec, type LineSpec } from '../charts/analysis/lines';
 import { Grade } from '../charts/small';
 import { Card, Desktop, Intro, JobNote, NotAvailable } from '../charts/analysis/frame';
+import { InspectorNotes } from '../ui/Inspector';
+import { Fill } from '../ui/Fill';
+import { View } from '../ui/View';
 import { METRICS, fmt, metricLabel, missingInput } from '../charts/analysis/inputs';
 
 interface BenchRow {
@@ -63,11 +66,13 @@ function Detail({ row, nights }: { row: BenchRow; nights: Table }) {
   }, [nights, row, spec, state.labels]);
   return (
     <Card title={`${metricLabel(row.metric)}: quiet nights and the local level`} method="bench.reliability" job={{ kind: 'bench', metrics: [row.metric] }} testid="bench-detail">
-      <LineChart x={chart.x} lines={chart.lines} band={chart.band} time xFmt={dayText} yLabel={spec?.log ? `ln ${row.metric}` : row.metric} height={220} ariaLabel={`${metricLabel(row.metric)}: nightly values and the fitted local level`} testid="chart-bench" />
-      <p className="muted" style={{ fontSize: 12 }}>
-        Orange dots are quiet nights (no event within 3 nights, an easy day before, no time-zone change), grey are the rest. The teal line is a random-walk level fitted by maximum likelihood (night-to-night noise {fmt(row.sigma_eps)}, drift {fmt(row.sigma_eta)} per night, drift to noise ratio q = {fmt(row.q)}), with +/- 1 SD of the level shaded.
-        A change must exceed {fmt(row.mdc95)} to be real at 95% (the minimal detectable change); {fmt(row.swc)} is a worthwhile change (0.5 SD of quiet nights).
-      </p>
+      <Fill>{({ h }) => <LineChart x={chart.x} lines={chart.lines} band={chart.band} time xFmt={dayText} yLabel={spec?.log ? `ln ${row.metric}` : row.metric} height={Math.max(120, h)} ariaLabel={`${metricLabel(row.metric)}: nightly values and the fitted local level`} testid="chart-bench" />}</Fill>
+      <InspectorNotes>
+        <p className="muted">
+          Orange dots are quiet nights (no event within 3 nights, an easy day before, no time-zone change), grey are the rest. The teal line is a random-walk level fitted by maximum likelihood (night-to-night noise {fmt(row.sigma_eps)}, drift {fmt(row.sigma_eta)} per night, drift to noise ratio q = {fmt(row.q)}), with +/- 1 SD of the level shaded.
+          A change must exceed {fmt(row.mdc95)} to be real at 95% (the minimal detectable change); {fmt(row.swc)} is a worthwhile change (0.5 SD of quiet nights).
+        </p>
+      </InspectorNotes>
     </Card>
   );
 }
@@ -119,44 +124,40 @@ function Body() {
   const skipped = METRICS.filter((m) => rows && !rows.some((r) => r.metric === m.id));
 
   return (
-    <div className="page">
-      <h1>Bench</h1>
+    <View title="Bench" desc="Which of your numbers carry signal, and which mostly wobble." tools={<JobNote loading={loading} error={error} />}>
       <Intro>The bench says which of your numbers carry information. For each metric it measures how much of the night-to-night movement is noise on quiet nights (typical error, reliability, minimal detectable change) and how strongly it responds to training and to the events you have confirmed. Metrics with a high signal to noise are worth watching; the rest mostly wobble.</Intro>
-      <JobNote loading={loading} error={error} />
       {!nights || nights.n === 0 ? <div className="empty">No nights loaded yet.</div>
         : rows && rows.length === 0 ? <div className="empty" data-testid="bench-empty">Not enough quiet nights yet: each metric needs at least 20 nights with no event nearby, an easy day before and a full heart-rate record.</div>
-        : rows && (
-          <>
-            <Card title="Every metric" method="bench.reliability" job={job} testid="bench-table">
-              <div style={{ overflowX: 'auto' }}>
-                <table className="t" data-testid="bench-sortable">
-                  <thead>
-                    <tr>
-                      <th><button style={{ all: 'unset', cursor: 'pointer' }} onClick={() => click('metric')}>Metric{arrow('metric')}</button></th>
-                      {cols.map((c) => <th key={c.id} className="n" title={c.title}><button style={{ all: 'unset', cursor: 'pointer' }} onClick={() => click(c.id)} aria-sort={c.id === sort ? (dir === 'desc' ? 'descending' : 'ascending') : 'none'}>{c.label}{arrow(c.id)}</button></th>)}
+        : rows ? (
+          <div className="vgrid" style={{ gridTemplateRows: 'minmax(0,1.3fr) minmax(0,1fr)' }}>
+            <Card title="Every metric" method="bench.reliability" job={job} testid="bench-table" scroll>
+              <table className="t" data-testid="bench-sortable">
+                <thead>
+                  <tr>
+                    <th><button style={{ all: 'unset', cursor: 'pointer' }} onClick={() => click('metric')}>Metric{arrow('metric')}</button></th>
+                    {cols.map((c) => <th key={c.id} className="n" title={c.title}><button style={{ all: 'unset', cursor: 'pointer' }} onClick={() => click(c.id)} aria-sort={c.id === sort ? (dir === 'desc' ? 'descending' : 'ascending') : 'none'}>{c.label}{arrow(c.id)}</button></th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((r) => (
+                    <tr key={r.metric} onClick={() => setPick(r.metric)} style={{ cursor: 'pointer', background: sel?.metric === r.metric ? 'var(--panel2)' : undefined }} aria-selected={sel?.metric === r.metric} data-testid="bench-row">
+                      <td style={{ whiteSpace: 'nowrap' }}>{metricLabel(r.metric)} <Grade g={r.grade} /></td>
+                      {cols.map((c) => <td key={c.id} className="n" style={{ whiteSpace: 'nowrap' }}>{c.show(r)}</td>)}
                     </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((r) => (
-                      <tr key={r.metric} onClick={() => setPick(r.metric)} style={{ cursor: 'pointer', background: sel?.metric === r.metric ? 'var(--panel2)' : undefined }} aria-selected={sel?.metric === r.metric} data-testid="bench-row">
-                        <td style={{ whiteSpace: 'nowrap' }}>{metricLabel(r.metric)} <Grade g={r.grade} /></td>
-                        {cols.map((c) => <td key={c.id} className="n" style={{ whiteSpace: 'nowrap' }}>{c.show(r)}</td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
+              {skipped.length > 0 && (
+                <details style={{ marginTop: 10 }}>
+                  <summary className="muted">{skipped.length} metrics not scored</summary>
+                  <ul>{skipped.map((m) => <li key={m.id}>{metricLabel(m.id)}: {missingInput(nights, m.id) ? <NotAvailable inline input={missingInput(nights, m.id)!} /> : 'fewer than 20 quiet nights with a value'}</li>)}</ul>
+                </details>
+              )}
             </Card>
-            {sel && nights && <Detail row={sel} nights={nights} />}
-            {skipped.length > 0 && (
-              <details>
-                <summary className="muted">{skipped.length} metrics not scored</summary>
-                <ul>{skipped.map((m) => <li key={m.id}>{metricLabel(m.id)}: {missingInput(nights, m.id) ? <NotAvailable inline input={missingInput(nights, m.id)!} /> : 'fewer than 20 quiet nights with a value'}</li>)}</ul>
-              </details>
-            )}
-          </>
-        )}
-    </div>
+            {sel && nights ? <Detail row={sel} nights={nights} /> : <div className="panel" />}
+          </div>
+        ) : <div className="empty">{loading ? 'Working...' : ''}</div>}
+    </View>
   );
 }
 

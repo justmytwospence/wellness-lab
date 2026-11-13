@@ -94,6 +94,7 @@ main.main { grid-column: 2; grid-row: 2; overflow: hidden; min-height: 0; min-wi
 .panel.scroll > .panel-body { overflow: auto; display: block; }
 .fill { flex: 1 1 0; min-height: 0; min-width: 0; position: relative; }
 .fill > .fill-in { position: absolute; inset: 0; }
+@media (min-width: 768px) { .stack-col > .fill > .fill { position: absolute; inset: 0; } }
 .stack-col { display: flex; flex-direction: column; gap: 6px; flex: 1 1 0; min-height: 0; }
 .strip { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; padding: 10px 20px; border-bottom: 1px solid var(--line); }
 .strip > div { display: flex; flex-direction: column; gap: 1px; font: 600 15px var(--mono); }

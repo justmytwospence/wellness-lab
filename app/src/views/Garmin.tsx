@@ -9,6 +9,9 @@ import { Whisker } from '../charts/analysis/dots';
 import { Heatgrid } from '../charts/analysis/heat';
 import { Card, Desktop, Intro, JobNote, NotAvailable } from '../charts/analysis/frame';
 import { fmt } from '../charts/analysis/inputs';
+import { Fill } from '../ui/Fill';
+import { FocusList, type FocusItem } from '../ui/FocusList';
+import { View } from '../ui/View';
 
 interface Regression { terms: string[]; beta: (number | null)[]; se: (number | null)[]; r2: number | null; rmse: number | null; n: number; worst: [number, number, number][] }
 interface Teardown {
@@ -23,7 +26,7 @@ function RegressionTable({ r, title, method, job, input, note }: { r: Regression
   const bs = r.beta.filter((b): b is number => b !== null && Number.isFinite(b));
   const lim = Math.max(1e-6, ...bs.map((b, i) => Math.abs(b) + (r.se[i] ?? 0)));
   return (
-    <Card title={title} method={method} job={job} testid={`reg-${method}-${title}`}>
+    <Card title={title} method={method} job={job} testid={`reg-${method}-${title}`} scroll>
       {!ok ? <NotAvailable input={input} /> : (
         <>
           <table className="t">
@@ -92,7 +95,9 @@ function ExampleDay({ table, day }: { table: Teardown['body_battery']['table']; 
   return (
     <>
       <h3>Example: the day around {isoDay(day)}, recorded and rebuilt</h3>
-      <LineChart x={sim.x} lines={lines} time xFmt={clockText} height={190} yLabel="Body Battery" ariaLabel="Body Battery recorded and rebuilt from the rate table for one day" testid="chart-bb-example" />
+      <div style={{ display: 'flex', flexDirection: 'column', height: 280 }}>
+        <Fill>{({ h }) => <LineChart x={sim.x} lines={lines} time xFmt={clockText} height={h} yLabel="Body Battery" ariaLabel="Body Battery recorded and rebuilt from the rate table for one day" testid="chart-bb-example" />}</Fill>
+      </div>
       <p className="muted" style={{ fontSize: 12 }}>Mean error on this day: {fmt(sim.mae, 1)} points (local clock; activity periods are approximated by their stress band here).</p>
     </>
   );
@@ -102,7 +107,7 @@ function BodyBattery({ t, job, day }: { t: Teardown['body_battery']; job: unknow
   const rows = BANDS.filter((b) => t.table.some((r) => r[0] === b));
   const at = (b: string, a: boolean) => t.table.find((r) => r[0] === b && r[1] === a);
   return (
-    <Card title="Body Battery: points per hour by stress band" method="garmin.teardown" job={job} testid="card-bb">
+    <Card title="Body Battery: points per hour by stress band" method="garmin.teardown" job={job} testid="card-bb" scroll>
       {rows.length === 0 ? <NotAvailable input="body_battery and stress series" /> : (
         <>
           <p className="muted" style={{ fontSize: 12 }}>Mean rate at which Body Battery changes, by the stress level of the moment and whether you were asleep (blue cells charge the battery, red cells drain it).</p>
@@ -126,11 +131,11 @@ function BodyBattery({ t, job, day }: { t: Teardown['body_battery']; job: unknow
 function BandGrid({ g, job }: { g: Teardown['hrv_band']; job: unknown }) {
   const kinds = ['sd', 'percentile'] as const;
   return (
-    <Card title="Garmin's HRV Status band: which window and width reproduce it" method="garmin.teardown" job={job} testid="card-hrv-band">
+    <Card title="Garmin's HRV Status band: which window and width reproduce it" method="garmin.teardown" job={job} testid="card-hrv-band" scroll>
       {g.mae.length === 0 || g.mae.every((m) => m === null) ? <NotAvailable input="days.hrv_bal_lo and days.hrv_bal_hi (Garmin HRV status)" /> : (
         <>
           <p className="muted" style={{ fontSize: 12 }}>Mean error (ln ms) between Garmin's balanced range and the range recomputed from your own nightly values, for each window length and band width. Darker is closer.</p>
-          <div className="grid2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))' }}>
+          <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))' }}>
             {kinds.map((k) => {
               const idx = g.kind.map((x, i) => (x === k ? i : -1)).filter((i) => i >= 0);
               const wins = [...new Set(idx.map((i) => g.window[i]!))];
@@ -173,7 +178,7 @@ function StressHr({ s, job }: { s: Teardown['stress_vs_hr']; job: unknown }) {
   const vals = s.median_stress.filter(Number.isFinite);
   const [lo, hi] = [Math.min(...vals), Math.max(...vals)];
   return (
-    <Card title="Stress against heart rate" method="garmin.teardown" job={job} testid="card-stress-hr">
+    <Card title="Stress against heart rate" method="garmin.teardown" job={job} testid="card-stress-hr" scroll>
       {bins.length === 0 ? <NotAvailable input="stress and hr series with activities" /> : (
         <>
           <p className="muted" style={{ fontSize: 12 }}>Median Garmin stress (0 to 100) by how far your heart rate is above your resting rate, and how long ago your last activity ended. Garmin's stress is derived from heart-rate variability, so it should rise with heart rate and fall back after exercise.</p>
@@ -197,25 +202,30 @@ function Body() {
   const job = useMemo(() => (nights && nights.n > 30 ? { kind: 'teardown' as const } : null), [nights]);
   const { data, loading, error } = useJob(job);
   const t = data as unknown as Teardown | null;
+  const items: FocusItem[] = [
+    { id: 'sleep', title: 'Sleep score from its sub-scores' },
+    { id: 'ready-nnls', title: 'Readiness: non-negative weights' },
+    { id: 'ready-ols', title: 'Readiness: ordinary least squares' },
+    { id: 'bb', title: 'Body Battery' },
+    { id: 'band', title: 'HRV Status band' },
+    { id: 'stress', title: 'Stress against heart rate' },
+  ];
   return (
-    <div className="page">
-      <h1>Garmin</h1>
+    <View title="Garmin" desc="What Garmin's scores are made of." tools={<JobNote loading={loading} error={error} />}>
       <Intro>What Garmin's own inputs predict, and where its numbers depart from them. Garmin publishes the pieces behind its sleep score and readiness; this fits them back to the score, rebuilds Body Battery from stress and sleep, and finds the HRV Status band it must be using.</Intro>
-      <JobNote loading={loading} error={error} />
-      {!nights || nights.n === 0 ? <div className="empty">No nights loaded yet.</div> : null}
-      {t && (
-        <>
-          <RegressionTable r={t.sleep_score} title="Sleep score from its sub-scores" method="garmin.teardown" job={job} input="days.sleep_*_score (Garmin sleep sub-scores)" />
-          <div className="grid2">
-            <RegressionTable r={t.readiness_nnls} title="Readiness: non-negative weights" method="garmin.teardown" job={job} input="days.tr_*_pct (Garmin training readiness factors)" note="Non-negative least squares, so no standard errors." />
-            <RegressionTable r={t.readiness_ols} title="Readiness: ordinary least squares" method="garmin.teardown" job={job} input="days.tr_*_pct (Garmin training readiness factors)" />
-          </div>
-          <BodyBattery t={t.body_battery} job={job} day={lastDay} />
-          <BandGrid g={t.hrv_band} job={job} />
-          <StressHr s={t.stress_vs_hr} job={job} />
-        </>
-      )}
-    </div>
+      <FocusList items={items} label="Garmin charts" render={(it) => {
+        if (!nights || nights.n === 0) return <div className="empty">No nights loaded yet.</div>;
+        if (!t) return <div className="empty">{loading ? 'Working...' : ''}</div>;
+        switch (it.id) {
+          case 'ready-nnls': return <RegressionTable r={t.readiness_nnls} title="Readiness: non-negative weights" method="garmin.teardown" job={job} input="days.tr_*_pct (Garmin training readiness factors)" note="Non-negative least squares, so no standard errors." />;
+          case 'ready-ols': return <RegressionTable r={t.readiness_ols} title="Readiness: ordinary least squares" method="garmin.teardown" job={job} input="days.tr_*_pct (Garmin training readiness factors)" />;
+          case 'bb': return <BodyBattery t={t.body_battery} job={job} day={lastDay} />;
+          case 'band': return <BandGrid g={t.hrv_band} job={job} />;
+          case 'stress': return <StressHr s={t.stress_vs_hr} job={job} />;
+          default: return <RegressionTable r={t.sleep_score} title="Sleep score from its sub-scores" method="garmin.teardown" job={job} input="days.sleep_*_score (Garmin sleep sub-scores)" />;
+        }
+      }} />
+    </View>
   );
 }
 

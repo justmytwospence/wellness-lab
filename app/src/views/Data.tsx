@@ -1,10 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { exportBackup, importBackup, removeEntry, estimate } from '@wl/store';
 import { beginSignIn, fetchAuth, finishSignIn, freshToken, opfsFiles, pullWellness, servers, saveServers, LIBRARY_DIR, type ImportEvent, type ImportReport } from '@wl/ingest';
 import { PAL, isoDay, sequential } from '@wl/views';
 import { useApp } from '../lib/app';
 import { useJob } from '../lib/useJob';
 import { Empty } from '../charts/small';
+import { Panel } from '../ui/Panel';
+import { View } from '../ui/View';
+
+/** One hairline-separated section inside a scrolling column. */
+function Block({ title, sub, testid, children }: { title: ReactNode; sub?: ReactNode; testid?: string; children: ReactNode }) {
+  return (
+    <section className="method" data-testid={testid}>
+      <h2 style={{ margin: '0 0 8px', fontSize: 14 }}>{title}{sub && <> {sub}</>}</h2>
+      {children}
+    </section>
+  );
+}
 
 function Coverage() {
   const { data } = useJob({ kind: 'coverage' });
@@ -32,15 +44,14 @@ function Coverage() {
   const names = Object.keys(cov.series);
   const d = cov.devices;
   return (
-    <div className="card">
-      <h2>Coverage <span className="muted" style={{ fontSize: 12 }}>{isoDay(cov.first_day)} to {isoDay(cov.first_day + cov.days - 1)}</span></h2>
+    <Block title="Coverage" sub={<span className="muted" style={{ fontSize: 12 }}>{isoDay(cov.first_day)} to {isoDay(cov.first_day + cov.days - 1)}</span>}>
       <div style={{ display: 'flex', gap: 8 }}>
-        <div className="mono muted" style={{ fontSize: 10, lineHeight: '12px' }}>{names.map((n) => <div key={n}>{n}</div>)}</div>
-        <canvas ref={ref} style={{ width: '100%', height: names.length * 12, imageRendering: 'pixelated' }} />
+        <div className="mono muted" style={{ fontSize: 10, lineHeight: '12px', flex: 'none' }}>{names.map((n) => <div key={n}>{n}</div>)}</div>
+        <canvas ref={ref} style={{ width: '100%', minWidth: 0, flex: '1 1 0', height: names.length * 12, imageRendering: 'pixelated' }} />
       </div>
       <p className="muted" style={{ fontSize: 12 }}>Each row is a series, each column a stretch of days; brighter is fuller. {cov.no_hr_days.length} days have no heart rate (watch off or not synced), so they are never read as calm days.</p>
       {d.n > 0 && (<><h3>Devices</h3><table className="t"><thead><tr><th>Product</th><th>Serial</th><th>From</th><th>To</th></tr></thead><tbody>{Array.from({ length: d.n }, (_, i) => <tr key={i}><td>{d.txt.product?.[i]}</td><td className="mono">{d.txt.serial?.[i]}</td><td className="mono">{d.num.first_day?.[i] != null ? isoDay(d.num.first_day[i]!) : ''}</td><td className="mono">{d.num.last_day?.[i] != null ? isoDay(d.num.last_day[i]!) : ''}</td></tr>)}</tbody></table></>)}
-    </div>
+    </Block>
   );
 }
 
@@ -64,10 +75,9 @@ function ImportPanel() {
     w.postMessage({ file });
   };
   return (
-    <div className="card">
-      <h2>Import a Garmin account export</h2>
+    <Block title="Import a Garmin account export">
       <p className="muted">Request your data at garmin.com (Account, Data Management, Export Your Data) and drop the zip here. It is read in this browser; nothing is uploaded anywhere.</p>
-      <label className="card" style={{ display: 'block', textAlign: 'center', borderStyle: 'dashed', cursor: 'pointer' }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) run(f); }}>
+      <label style={{ display: 'block', textAlign: 'center', border: '1px dashed var(--line)', borderRadius: 8, padding: 16, cursor: 'pointer' }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) run(f); }}>
         {busy ? `${phase} ${Math.round(pct * 100)}%` : 'Drop the export zip here, or click to choose it'}
         <input type="file" accept=".zip" hidden disabled={busy} data-testid="import-file" onChange={(e) => { const f = e.target.files?.[0]; if (f) run(f); }} />
       </label>
@@ -81,7 +91,7 @@ function ImportPanel() {
           {report.errors.length > 0 && <details><summary>{report.errors.length} warnings</summary><pre className="mono" style={{ fontSize: 11 }}>{report.errors.join('\n')}</pre></details>}
         </div>
       )}
-    </div>
+    </Block>
   );
 }
 
@@ -111,12 +121,11 @@ function ConnectPanel() {
     await beginSignIn(base, meta);
   };
   return (
-    <div className="card">
-      <h2>Connect to your garmin-mcp</h2>
+    <Block title="Connect to your garmin-mcp">
       <p className="muted">Point at its wellness export, for example https://garmin.example.com/export/wellness/v1. Your browser signs in and pulls the files directly.</p>
       <div className="row"><input style={{ flex: 1, minWidth: 260 }} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://.../export/wellness/v1" aria-label="garmin-mcp export address" /><button onClick={() => void connect()} disabled={!url}>Sign in</button><button onClick={() => void pull(url.replace(/\/$/, ''))} disabled={!url}>Pull now</button></div>
       {msg && <p className="muted">{msg}</p>}
-    </div>
+    </Block>
   );
 }
 
@@ -142,20 +151,24 @@ export default function Data() {
     location.reload();
   };
   return (
-    <div className="page">
-      <h1>Data</h1>
-      <div className="card" data-testid="source">
-        <h2>Source</h2>
-        <p>{app.mode === 'server' ? 'Server mode: the server syncs with garmin-mcp and keeps your labels; this browser caches the files.' : 'Local mode: everything is in this browser (OPFS). Nothing leaves your device.'}</p>
-        <p className="muted">{app.demo ? 'Showing synthetic demo data.' : m ? `${m.files.length} files, from ${String(m.source.kind)}, written by ${m.importer} on ${m.generated_at.slice(0, 10)}.` : 'No data loaded.'}{info?.usage ? ` Storage used: ${(info.usage / 1e6).toFixed(0)} MB.` : ''}</p>
-        {app.mode === 'server' && <div className="row"><button onClick={() => void app.syncNow()}>Sync now</button><span className="muted">{sync?.last_ok ? `last sync ${sync.last_ok}` : ''}{sync?.error ? ` (error: ${sync.error})` : ''}</span></div>}
-        <div className="row" style={{ marginTop: 8 }}><button onClick={() => void app.loadDemo()}>Load demo data</button>{m && <button onClick={() => void backup()}>Download backup</button>}
-          <label className="row">Restore <input type="file" accept=".zip" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { await importBackup(f, (p, d) => opfsFiles.write(p, d)); await app.refreshData(); } }} /></label>
-          <button className="danger" onClick={() => void wipe()}>Delete all local data</button></div>
+    <View title="Data" desc="Where your data comes from and what it covers.">
+      <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
+        <Panel scroll testid="data-left">
+          <Block title="Source" testid="source">
+          <p>{app.mode === 'server' ? 'Server mode: the server syncs with garmin-mcp and keeps your labels; this browser caches the files.' : 'Local mode: everything is in this browser (OPFS). Nothing leaves your device.'}</p>
+          <p className="muted">{app.demo ? 'Showing synthetic demo data.' : m ? `${m.files.length} files, from ${String(m.source.kind)}, written by ${m.importer} on ${m.generated_at.slice(0, 10)}.` : 'No data loaded.'}{info?.usage ? ` Storage used: ${(info.usage / 1e6).toFixed(0)} MB.` : ''}</p>
+          {app.mode === 'server' && <div className="row"><button onClick={() => void app.syncNow()}>Sync now</button><span className="muted">{sync?.last_ok ? `last sync ${sync.last_ok}` : ''}{sync?.error ? ` (error: ${sync.error})` : ''}</span></div>}
+          <div className="row" style={{ marginTop: 8 }}><button onClick={() => void app.loadDemo()}>Load demo data</button>{m && <button onClick={() => void backup()}>Download backup</button>}
+            <label className="row">Restore <input type="file" accept=".zip" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { await importBackup(f, (p, d) => opfsFiles.write(p, d)); await app.refreshData(); } }} /></label>
+            <button className="danger" onClick={() => void wipe()}>Delete all local data</button></div>
+          </Block>
+          {app.mode === 'local' && <><ImportPanel /><ConnectPanel /></>}
+          <p className="muted" style={{ fontSize: 12 }}>Files are in OPFS under {LIBRARY_DIR.join('/')}.</p>
+        </Panel>
+        <Panel scroll testid="data-right">
+          {app.nights && app.nights.n > 0 ? <Coverage /> : <Empty>Coverage appears once there is data.</Empty>}
+        </Panel>
       </div>
-      {app.mode === 'local' && <><ImportPanel /><ConnectPanel /></>}
-      {app.nights && app.nights.n > 0 ? <Coverage /> : <Empty>Coverage appears once there is data.</Empty>}
-      <p className="muted" style={{ fontSize: 12 }}>Files are in OPFS under {LIBRARY_DIR.join('/')}.</p>
-    </div>
+    </View>
   );
 }

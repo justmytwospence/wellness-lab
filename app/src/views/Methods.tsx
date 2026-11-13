@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { MethodSpec, RefSpec } from '@wl/schema';
 import { useApp } from '../lib/app';
 import { Empty, Grade } from '../charts/small';
+import { Panel } from '../ui/Panel';
+import { View } from '../ui/View';
 
 const resolution = (s: number | null) => {
   if (s === null) return 'any';
@@ -11,7 +13,7 @@ const resolution = (s: number | null) => {
 
 function Method({ m, refs }: { m: MethodSpec; refs: Map<string, RefSpec> }) {
   return (
-    <section className="card" id={m.id} data-method={m.id}>
+    <section className="method" id={m.id} data-method={m.id}>
       <h2>{m.name}<Grade g={m.validity} /> <span className="muted mono" style={{ fontSize: 11, fontWeight: 400 }}>{m.id}</span></h2>
       <p>{m.summary}</p>
       <h3>Formula</h3>
@@ -73,28 +75,41 @@ export default function Methods() {
     return [...out];
   }, [registry, q]);
 
-  if (!registry) return <div className="page"><h1>Methods</h1><Empty>Loading the method registry...</Empty></div>;
+  const doc = useRef<HTMLDivElement>(null);
+  const go = (g: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    doc.current?.querySelector(`#group-${CSS.escape(encodeURIComponent(g))}`)?.scrollIntoView({ block: 'start' });
+  };
+
+  if (!registry) return <View title="Methods"><Empty>Loading the method registry...</Empty></View>;
   return (
-    <div className="page" style={{ maxWidth: 980 }}>
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>Methods</h1>
-        <input type="search" aria-label="Filter methods" placeholder="Filter methods" value={q} onChange={(e) => setQ(e.target.value)} />
+    <View
+      title="Methods"
+      desc="Every method, its formula and its sources."
+      tools={<input type="search" aria-label="Filter methods" placeholder="Filter methods" value={q} onChange={(e) => setQ(e.target.value)} />}
+    >
+      <div className="vgrid" style={{ gridTemplateColumns: '200px minmax(0,1fr)' }}>
+        <Panel scroll testid="methods-groups">
+          <nav className="vnav" aria-label="Groups">
+            {groups.map(([g, ms]) => <a key={g} href={`#group-${encodeURIComponent(g)}`} onClick={go(g)}>{g} <span className="muted">({ms.length})</span></a>)}
+          </nav>
+        </Panel>
+        <Panel scroll testid="methods-doc">
+          <div ref={doc} style={{ maxWidth: 980 }}>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Every number in this app comes from one of these methods. The badge is how far to trust it on wrist data: A is solid, B is good for your own trends, C is experimental, D is shown for completeness.
+              {' '}{registry.methods.length} methods.
+            </p>
+            {groups.length === 0 && <Empty>No method matches "{q}".</Empty>}
+            {groups.map(([g, ms]) => (
+              <div key={g} id={`group-${encodeURIComponent(g)}`}>
+                <h2 style={{ margin: '18px 0 8px', fontSize: 17 }}>{g}</h2>
+                {ms.map((m) => <Method key={m.id} m={m} refs={refs} />)}
+              </div>
+            ))}
+          </div>
+        </Panel>
       </div>
-      <p className="muted">
-        Every number in this app comes from one of these methods, with its formula, the inputs it needs and where it comes from.
-        The badge is how far to trust it on wrist data: A is solid, B is good for your own trends, C is experimental, D is shown for completeness.
-        {' '}{registry.methods.length} methods.
-      </p>
-      <nav className="row" aria-label="Groups" style={{ marginBottom: 14 }}>
-        {groups.map(([g, ms]) => <a key={g} href={`#group-${encodeURIComponent(g)}`}>{g} <span className="muted">({ms.length})</span></a>)}
-      </nav>
-      {groups.length === 0 && <Empty>No method matches "{q}".</Empty>}
-      {groups.map(([g, ms]) => (
-        <div key={g} id={`group-${encodeURIComponent(g)}`}>
-          <h2 style={{ margin: '18px 0 8px', fontSize: 17 }}>{g}</h2>
-          {ms.map((m) => <Method key={m.id} m={m} refs={refs} />)}
-        </div>
-      ))}
-    </div>
+    </View>
   );
 }

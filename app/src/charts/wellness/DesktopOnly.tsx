@@ -1,3 +1,4 @@
+import { View } from '../../ui/View';
 import { useSyncExternalStore, type ReactNode } from 'react';
 import { Empty } from '../small';
 
@@ -18,9 +19,8 @@ export function DesktopOnly({ title, children }: { title: string; children: Reac
   const narrow = useNarrow();
   if (!narrow) return <>{children}</>;
   return (
-    <div className="page">
-      <h1>{title}</h1>
+    <View title={title}>
       <Empty>This view needs a larger screen. <div className="mono" style={{ marginTop: 6 }}>{location.pathname}{location.search}</div></Empty>
-    </div>
+    </View>
   );
 }

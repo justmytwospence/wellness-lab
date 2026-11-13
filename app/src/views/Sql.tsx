@@ -4,6 +4,9 @@ import type { Table } from '@wl/schema';
 import { useApp } from '../lib/app';
 import { link, useParam } from '../lib/router';
 import type { duckdb } from '../lib/duck';
+import { Fill } from '../ui/Fill';
+import { Panel } from '../ui/Panel';
+import { View } from '../ui/View';
 
 type Cell = string | number | null;
 interface Result { cols: string[]; rows: Cell[][]; total: number; ms: number }
@@ -12,7 +15,6 @@ interface Saved { name: string; sql: string }
 
 export const MAX_ROWS = 10_000;
 const ROW_H = 24;
-const VIEW_H = 440;
 const KEY = 'wl.sql';
 
 const DAY0 = "DATE '1970-01-01'";
@@ -54,13 +56,13 @@ export function toCsv(r: Pick<Result, 'cols' | 'rows'>): string {
 }
 
 /** A result table that only renders the rows in view (fixed row height). */
-function Grid({ r }: { r: Result }) {
+function Grid({ r, height }: { r: Result; height: number }) {
   const [top, setTop] = useState(0);
   const first = Math.max(0, Math.floor(top / ROW_H) - 6);
-  const last = Math.min(r.rows.length, first + Math.ceil(VIEW_H / ROW_H) + 12);
+  const last = Math.min(r.rows.length, first + Math.ceil(height / ROW_H) + 12);
   const widths = [64, ...r.cols.map(() => 150)];
   return (
-    <div data-testid="sql-grid" onScroll={(e) => setTop(e.currentTarget.scrollTop)} style={{ height: Math.min(VIEW_H, (r.rows.length + 1) * ROW_H + 18), overflow: 'auto', border: '1px solid var(--line)', borderRadius: 6 }}>
+    <div data-testid="sql-grid" onScroll={(e) => setTop(e.currentTarget.scrollTop)} style={{ height, overflow: 'auto', border: '1px solid var(--line)', borderRadius: 6 }}>
       <table className="t mono" style={{ tableLayout: 'fixed', width: widths.reduce((a, b) => a + b, 0), fontSize: 12 }}>
         <colgroup>{widths.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
         <thead><tr><th className="n" style={{ height: ROW_H }}>#</th>{r.cols.map((c, i) => <th key={i} style={{ height: ROW_H, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</th>)}</tr></thead>
@@ -198,58 +200,66 @@ export default function Sql() {
     return null;
   }, [demo]);
 
-  return (
-    <div className="page">
-      <h1>SQL</h1>
-      <p className="muted">DuckDB running in this browser over your data. Nothing leaves the device. <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> runs the query.</p>
-      {notice && <div className="card" role="note">{notice}</div>}
-      {status.kind === 'empty' && <div className="card">No data is loaded. <a href="/data" onClick={link('/data')}>Import a Garmin export, connect garmin-mcp or load demo data</a>, then come back.</div>}
-      {status.kind === 'starting' && <div className="card muted" role="status">Starting DuckDB and registering your files...</div>}
-      {status.kind === 'error' && <div className="card err" role="alert">Could not start DuckDB: {status.message}</div>}
+  const notes = [
+    notice && <span key="n" role="note">{notice}</span>,
+    status.kind === 'empty' && <span key="e">No data is loaded. <a href="/data" onClick={link('/data')}>Import a Garmin export, connect garmin-mcp or load demo data</a>, then come back.</span>,
+    status.kind === 'starting' && <span key="s" className="muted" role="status">Starting DuckDB and registering your files...</span>,
+    status.kind === 'error' && <span key="x" className="err" role="alert">Could not start DuckDB: {status.message}</span>,
+  ].filter(Boolean);
+  const tools = (
+    <>
+      <select aria-label="Starter queries" value="" onChange={(e) => { const s = STARTERS[Number(e.target.value)]; if (s) setSql(s.sql); }}>
+        <option value="">Starter queries...</option>
+        {STARTERS.map((s, i) => <option key={s.name} value={i}>{s.name}</option>)}
+      </select>
+      {saved.length > 0 && (
+        <select aria-label="Saved queries" value="" onChange={(e) => { const s = saved.find((x) => x.name === e.target.value); if (s) setSql(s.sql); }}>
+          <option value="">Saved queries...</option>
+          {saved.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+        </select>
+      )}
+    </>
+  );
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 260px', gap: 14, alignItems: 'start' }}>
-        <div>
-          <div className="row" style={{ marginBottom: 8 }}>
-            <select aria-label="Starter queries" value="" onChange={(e) => { const s = STARTERS[Number(e.target.value)]; if (s) setSql(s.sql); }}>
-              <option value="">Starter queries...</option>
-              {STARTERS.map((s, i) => <option key={s.name} value={i}>{s.name}</option>)}
-            </select>
-            {saved.length > 0 && (
-              <select aria-label="Saved queries" value="" onChange={(e) => { const s = saved.find((x) => x.name === e.target.value); if (s) setSql(s.sql); }}>
-                <option value="">Saved queries...</option>
-                {saved.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
-              </select>
-            )}
-          </div>
-          <textarea
-            aria-label="SQL query"
-            className="mono"
-            spellCheck={false}
-            value={sql}
-            rows={11}
-            onChange={(e) => setSql(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void run(); } }}
-            style={{ width: '100%', fontSize: 13, lineHeight: 1.5, resize: 'vertical', tabSize: 2 }}
-          />
-          <div className="row" style={{ margin: '8px 0 12px' }}>
-            <button className="primary" disabled={!ready || running} onClick={() => void run()}>{running ? 'Running...' : 'Run'}</button>
-            <button disabled={!result || result.rows.length === 0} onClick={download}>Download CSV</button>
-            <span className="spacer" style={{ flex: 1 }} />
-            <input aria-label="Name to save the query under" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} style={{ width: 150 }} />
-            <button disabled={!name.trim()} onClick={save}>Save query</button>
-          </div>
-          {error && <pre className="err mono" role="alert" style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{error}</pre>}
-          {result && (
-            <div>
-              <p className="muted" data-testid="sql-summary">
-                {result.total.toLocaleString()} {result.total === 1 ? 'row' : 'rows'} in {result.ms} ms
-                {result.total > MAX_ROWS && `; showing and exporting the first ${MAX_ROWS.toLocaleString()}`}
-              </p>
-              {result.rows.length > 0 ? <Grid r={result} /> : <p className="muted">The query returned no rows.</p>}
+  return (
+    <View title="SQL" desc="Query your data with DuckDB. Ctrl/Cmd+Enter runs." tools={tools}>
+      <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0,1fr) 260px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          {notes.length > 0 && <div className="muted" style={{ padding: '6px 16px', fontSize: 12.5, background: 'var(--bg)', borderBottom: '1px solid var(--line)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{notes}</div>}
+          <div className="vgrid" style={{ flex: '1 1 0', height: 'auto', gridTemplateRows: 'minmax(120px,0.4fr) auto minmax(0,1fr)' }}>
+            <div className="panel" style={{ padding: 0 }}>
+              <textarea
+                aria-label="SQL query"
+                className="mono"
+                spellCheck={false}
+                value={sql}
+                onChange={(e) => setSql(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void run(); } }}
+                style={{ flex: '1 1 0', minHeight: 0, width: '100%', fontSize: 13, lineHeight: 1.5, resize: 'none', tabSize: 2, border: 0, borderRadius: 0, padding: '10px 16px', background: 'var(--bg)' }}
+              />
             </div>
-          )}
+            <div className="panel" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: '8px 16px' }}>
+              <button className="primary" disabled={!ready || running} onClick={() => void run()}>{running ? 'Running...' : 'Run'}</button>
+              <button disabled={!result || result.rows.length === 0} onClick={download}>Download CSV</button>
+              <span className="spacer" style={{ flex: 1 }} />
+              <input aria-label="Name to save the query under" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} style={{ width: 150 }} />
+              <button disabled={!name.trim()} onClick={save}>Save query</button>
+            </div>
+            <Panel testid="sql-results">
+              {error && <pre className="err mono" role="alert" style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: '0 0 6px' }}>{error}</pre>}
+              {result && (
+                <>
+                  <p className="muted" data-testid="sql-summary" style={{ margin: '0 0 6px' }}>
+                    {result.total.toLocaleString()} {result.total === 1 ? 'row' : 'rows'} in {result.ms} ms
+                    {result.total > MAX_ROWS && `; showing and exporting the first ${MAX_ROWS.toLocaleString()}`}
+                  </p>
+                  {result.rows.length > 0 ? <Fill>{({ h }) => <Grid r={result} height={h} />}</Fill> : <p className="muted">The query returned no rows.</p>}
+                </>
+              )}
+            </Panel>
+          </div>
         </div>
-        <aside className="card" aria-label="Tables" style={{ maxHeight: 640, overflow: 'auto' }}>
+        <aside className="panel" aria-label="Tables" style={{ overflow: 'auto' }}>
           <h3>Tables</h3>
           {views.length === 0 && <p className="muted" style={{ fontSize: 12 }}>{ready ? 'No tables.' : 'Not started.'}</p>}
           {views.map((v) => (
@@ -275,6 +285,6 @@ export default function Sql() {
           )}
         </aside>
       </div>
-    </div>
+    </View>
   );
 }
