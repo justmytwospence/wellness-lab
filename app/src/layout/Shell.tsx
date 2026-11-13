@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Command } from 'cmdk';
 import { Loader2, PanelRight, RefreshCw, Search, Waves } from 'lucide-react';
 import { parseDay } from '@wl/views';
@@ -10,11 +10,16 @@ import { InspectorPanel, InspectorProvider } from '../ui/Inspector';
 import { RangePicker } from '../ui/RangePicker';
 
 function useKeys() {
-  const { ui, lastDay, state } = useApp();
+  const app = useApp();
+  // the listener is installed once and reads the app through a ref: re-installing it on every render (the status
+  // bar ticks each second) lost the first half of a `g` chord
+  const live = useRef(app);
+  live.current = app;
   useEffect(() => {
     let g = false;
     let timer: ReturnType<typeof setTimeout>;
     const on = (e: KeyboardEvent) => {
+      const { ui, lastDay } = live.current;
       const el = e.target as HTMLElement;
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); ui.setPalette(!ui.palette); return; }
@@ -34,7 +39,7 @@ function useKeys() {
     };
     window.addEventListener('keydown', on, true);
     return () => window.removeEventListener('keydown', on, true);
-  }, [ui, lastDay, state]);
+  }, []);
 }
 
 function Palette() {

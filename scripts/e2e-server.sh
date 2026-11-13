@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 export LAB_DATA_DIR=/w/.local/e2e-server-data LAB_TOKEN=e2e LAB_STATIC_DIR=/w/app/dist LAB_PORT=8091
 rm -rf "$LAB_DATA_DIR"
 cargo build -q -p wellness-lab-server
-target/debug/wellness-lab-server synth --days 400 >/dev/null
+target/debug/wellness-lab-server synth --seed 3 --days 400 >/dev/null
 target/debug/wellness-lab-server serve >/tmp/server.log 2>&1 &
 PID=$!
 trap 'kill $PID 2>/dev/null || true' EXIT
