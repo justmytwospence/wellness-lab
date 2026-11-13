@@ -9,6 +9,9 @@ import { UPlot, axisStyle } from '../charts/UPlot';
 import { Empty, Grade } from '../charts/small';
 import { MethodButton } from '../layout/MethodPanel';
 import { LabelDialog } from '../layout/LabelDialog';
+import { View } from '../ui/View';
+import { Panel } from '../ui/Panel';
+import { Fill } from '../ui/Fill';
 
 const nz = (a: (number | null)[]): number[] => a.map((v) => (v === null ? NaN : v));
 
@@ -27,7 +30,7 @@ const LANES: LaneCfg[] = [
   { key: 'altitude', name: 'Altitude', unit: 'm', color: PAL.violet, kind: 'line' },
 ];
 
-function Lane({ cfg, night, other, xr, onBrush, labels, showX }: { showX: boolean; cfg: LaneCfg; night: NightChannels; other?: { night: NightChannels; shift: number }; xr: [number, number]; onBrush(r: [number, number] | null): void; labels: { a: number; b: number; color: string }[] }) {
+function Lane({ cfg, night, other, xr, onBrush, labels, showX, height }: { height: number; showX: boolean; cfg: LaneCfg; night: NightChannels; other?: { night: NightChannels; shift: number }; xr: [number, number]; onBrush(r: [number, number] | null): void; labels: { a: number; b: number; color: string }[] }) {
   const ch: Chan | undefined = night.series[cfg.key] ?? (cfg.key === 'steps' ? night.series.motion : undefined);
   const off = night.utc_offset_min;
   const band = cfg.band ? (night.bands[cfg.band] as Band | undefined) : undefined;
@@ -80,7 +83,7 @@ function Lane({ cfg, night, other, xr, onBrush, labels, showX }: { showX: boolea
   return (
     <div className="lane" data-testid={`lane-${cfg.key}`}>
       <span className="name">{cfg.name} {cfg.unit && <span className="muted">({cfg.unit})</span>}</span>
-      <UPlot options={options} data={data} height={showX ? 92 : 62} sync="night" />
+      <UPlot options={options} data={data} height={height} sync="night" />
     </div>
   );
 }
@@ -155,43 +158,55 @@ export default function Night() {
   const labels = useMemo(() => app.state.labels.filter((l) => !l.deleted_at && nightD && l.start_day <= day && l.end_day >= day).map((l) => ({ a: sec(nightD!.onset, nightD!.utc_offset_min) - 3600, b: sec(nightD!.wake, nightD!.utc_offset_min) + 3600, color: kindInfo(l.kind).color })), [app.state.labels, nightD, day]);
   const props = app.state.proposals.filter((p) => p.status === 'open' && p.start_day <= day && p.end_day >= day);
   const otherObj = useMemo(() => (nightD && oth ? { night: oth as unknown as NightChannels, shift: nightD.onset - (oth as unknown as NightChannels).onset } : undefined), [nightD, oth]);
+  const laneCfgs = nightD ? LANES.filter((c) => nightD.series[c.key] || (c.key === 'steps' && nightD.series.motion)) : [];
   return (
-    <div className="page" data-testid="night-page">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>{prettyDay(day)}</h1>
-        <div className="row">
+    <View
+      testid="night-page"
+      title={prettyDay(day)}
+      tools={(
+        <>
           <button onClick={() => step(-1)} aria-label="Previous night">[</button>
           <button onClick={() => step(1)} aria-label="Next night">]</button>
           <input type="date" value={isoDay(day)} onChange={(e) => e.target.value && navigate(`/night/${parseDay(e.target.value)}`)} aria-label="Night" />
           <label>Compare with <select value={cmp} onChange={(e) => setCmp(e.target.value)}><option value="none">nothing</option><option value="prev">previous night</option><option value="week">same weekday last week</option></select></label>
           <button onClick={() => setDialog(true)}>Label (l)</button>
           <MethodButton id="night.hr" job={{ kind: 'night', day }} />
-        </div>
-      </div>
+        </>
+      )}
+    >
       {error ? <Empty>No sleep recorded for this night. <a href="/nights" onClick={link('/nights')}>Back to nights</a></Empty> : !nightD ? <Empty>{loading ? 'Loading...' : 'No data'}</Empty> : (
-        <div className="grid2" style={{ gridTemplateColumns: 'minmax(0, 2.2fr) minmax(300px, 1fr)' }}>
-          <div className="card">
+        <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0, 1fr) 340px' }}>
+          <Panel>
             <Hypnogram night={nightD} xr={xr} onBrush={setZoom} />
-            {LANES.filter((c) => nightD.series[c.key] || (c.key === 'steps' && nightD.series.motion)).map((c, k, all) => <Lane showX={k === all.length - 1} key={c.key} cfg={c} night={nightD} xr={xr} onBrush={setZoom} labels={labels} other={c.key === 'hr' || c.key === 'hrv5' ? otherObj : undefined} />)}
+            <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 0', minHeight: 0, gap: 2, marginTop: 4 }}>
+              {laneCfgs.map((c, k) => {
+                const showX = k === laneCfgs.length - 1;
+                return (
+                  <Fill key={c.key} style={{ flex: showX ? '1.35 1 0' : '1 1 0', minHeight: 44 }}>
+                    {({ h }) => <Lane showX={showX} height={h} cfg={c} night={nightD} xr={xr} onBrush={setZoom} labels={labels} other={c.key === 'hr' || c.key === 'hrv5' ? otherObj : undefined} />}
+                  </Fill>
+                );
+              })}
+            </div>
             <div className="row muted" style={{ fontSize: 12, marginTop: 6 }}>
               <span>Drag on a lane or the stages to zoom, f to fit, double-click the stages to reset.</span>
               {STAGES.slice(0, 4).map((s) => <span key={s.code}><span style={{ color: s.color }}>{'\u25a0'}</span> {s.name}</span>)}
               {STRESS_BANDS.length > 0 && <span>Shaded: your usual night (10th to 90th percentile of the last 30)</span>}
             </div>
-            {labels.length > 0 && <p style={{ marginTop: 8 }}>{app.state.labels.filter((l) => !l.deleted_at && l.start_day <= day && l.end_day >= day).map((l) => <span key={l.id} className="chip" style={{ background: kindInfo(l.kind).color, marginRight: 6 }}>{kindInfo(l.kind).name}</span>)}</p>}
-            {props.length > 0 && <p className="muted">Suggested: {props.map((p) => kindInfo(p.kind).name).join(', ')} (see <a href="/inbox" onClick={link('/inbox')}>Inbox</a>)</p>}
-          </div>
-          <div className="card" style={{ alignSelf: 'start' }}>
+            {labels.length > 0 && <p style={{ marginTop: 8, marginBottom: 0 }}>{app.state.labels.filter((l) => !l.deleted_at && l.start_day <= day && l.end_day >= day).map((l) => <span key={l.id} className="chip" style={{ background: kindInfo(l.kind).color, marginRight: 6 }}>{kindInfo(l.kind).name}</span>)}</p>}
+            {props.length > 0 && <p className="muted" style={{ marginBottom: 0 }}>Suggested: {props.map((p) => kindInfo(p.kind).name).join(', ')} (see <a href="/inbox" onClick={link('/inbox')}>Inbox</a>)</p>}
+          </Panel>
+          <Panel scroll>
             {GROUPS.map((g) => (
               <div key={g.title} style={{ marginBottom: 10 }}>
                 <h3>{g.title}{g.grade && <Grade g={g.grade} />}</h3>
                 <table className="t"><tbody>{g.rows.map(([k, label, f]) => { const v = nightD.row[k]; if (v === null || v === undefined || !Number.isFinite(v)) return null; return <tr key={k}><td>{label}</td><td className="n">{f(v)}</td></tr>; })}</tbody></table>
               </div>
             ))}
-          </div>
+          </Panel>
         </div>
       )}
       {dialog && <LabelDialog initial={{ start_day: day, end_day: day }} onClose={() => setDialog(false)} />}
-    </div>
+    </View>
   );
 }

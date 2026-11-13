@@ -4,7 +4,10 @@ import { useApp } from '../lib/app';
 import { useJob } from '../lib/useJob';
 import { useParam } from '../lib/router';
 import { Empty } from '../charts/small';
-import { ChartCard } from '../charts/wellness/ChartCard';
+import { View, ViewEmpty } from '../ui/View';
+import { Panel } from '../ui/Panel';
+import { Fill } from '../ui/Fill';
+import { InspectorNotes } from '../ui/Inspector';
 import { DesktopOnly } from '../charts/wellness/DesktopOnly';
 import { QuantileBands, SmallMultiples, type AlignMode, type Typ } from '../charts/wellness/quantiles';
 import { useInputs } from '../charts/wellness/inputs';
@@ -76,41 +79,46 @@ function TypicalView() {
     return [lo - pad, hi + pad];
   }, [wk.data]);
 
-  if (!have) return <div className="page"><h1>Typical</h1><Empty>No data yet. Import or load the demo from the Data page.</Empty></div>;
+  if (!have) return <ViewEmpty title="Typical">No data yet. Import or load the demo from the Data page.</ViewEmpty>;
   const empty = !!ta && ta.minute.length === 0;
   const needs = empty && inputs.ready && !inputs.has(m.id) ? m.id : null;
   const fmt = (v: number) => v.toFixed(m.digits);
   const periodLabel = (r: [number, number]) => formatRange(r);
 
+  const showWeeks = !!ta && ta.minute.length > 0;
   return (
-    <div className="page">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h1>Typical</h1>
-        <div className="row">
+    <View
+      title="Typical"
+      desc="The shape of your nights: median and spread for each 10-minute bin."
+      tools={(
+        <>
           <label>Signal <select value={metric} onChange={(e) => setMetric(e.target.value)} aria-label="Signal">{METRICS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
           <label>Align <select value={mode} onChange={(e) => setAlign(e.target.value)} aria-label="Alignment"><option value="onset">on falling asleep</option><option value="clock">on the clock</option></select> <kbd>a</kbd></label>
-        </div>
-      </div>
-      <p className="muted">The shape of a night: for each 10-minute bin, the middle half (dark band) and the middle 90% (light band) of your nights, around the median. Bins need at least 5 nights.</p>
-      <div className="row" style={{ marginBottom: 12 }}>
-        <label>Period A <input value={aText} placeholder={app.rangeText} onChange={(e) => setAText(e.target.value)} aria-label="Period A" style={{ width: 200, borderColor: aBad ? PAL.alert : undefined }} /></label>
-        <label>Period B <input value={bText} placeholder="optional, e.g. 2024 or last 30 days" onChange={(e) => setBText(e.target.value)} aria-label="Period B" style={{ width: 240, borderColor: bBad ? PAL.alert : undefined }} /></label>
-        <span className="muted" style={{ fontSize: 12 }}>
-          <span style={{ color: PAL.hrv }}>A {periodLabel(a)}</span>{b && <span style={{ color: PAL.hr }}>, B {periodLabel(b)}</span>}
-          {(aBad || bBad) && <span className="err"> (could not read the period; using the default)</span>}
-        </span>
-      </div>
-      <ChartCard title={`Typical night: ${m.label}`} sub={mode === 'clock' ? 'Clock time, from 20:00' : 'Time since falling asleep'} method={m.method} job={job} needs={needs} loading={loading && !ta} error={error}>
-        {ta && ta.minute.length > 0 && <QuantileBands a={ta} b={tb && tb.minute.length ? tb : null} align={mode} bin={BIN} span={span} unit={m.unit} fmt={fmt} labelA="A" labelB="B" />}
-        {ta && ta.minute.length === 0 && !needs && <Empty>Fewer than 5 nights in {periodLabel(a)} have this signal.</Empty>}
-        {b && tb && tb.minute.length === 0 && <p className="muted">Period B has fewer than 5 nights with this signal.</p>}
-      </ChartCard>
-      {ta && ta.minute.length > 0 && (
-        <ChartCard title="Week by week" sub={`The median curve of each calendar week in period A, on one scale${weeks.length === MAX_WEEKS ? ` (the latest ${MAX_WEEKS} weeks)` : ''}. Shaded: middle half of the week's nights.`} method={m.method} job={{ kind: 'typical', metric: m.id, align: mode, per: 'week' }} loading={wk.loading && !wk.data.length}>
-          <SmallMultiples items={weeks.map(([f], i) => ({ label: isoDay(f), t: (wk.data[i]?.a ?? null) as Typ | null }))} domain={domain} span={span} bin={BIN} />
-        </ChartCard>
+          <label>Period A <input value={aText} placeholder={app.rangeText} onChange={(e) => setAText(e.target.value)} aria-label="Period A" style={{ width: 200, borderColor: aBad ? PAL.alert : undefined }} /></label>
+          <label>Period B <input value={bText} placeholder="optional, e.g. 2024 or last 30 days" onChange={(e) => setBText(e.target.value)} aria-label="Period B" style={{ width: 240, borderColor: bBad ? PAL.alert : undefined }} /></label>
+          <span className="muted" style={{ fontSize: 12 }}>
+            <span style={{ color: PAL.hrv }}>A {periodLabel(a)}</span>{b && <span style={{ color: PAL.hr }}>, B {periodLabel(b)}</span>}
+            {(aBad || bBad) && <span className="err"> (could not read the period; using the default)</span>}
+          </span>
+        </>
       )}
-    </div>
+    >
+      <InspectorNotes><h2>About this view</h2><p>The shape of a night: for each 10-minute bin, the middle half (dark band) and the middle 90% (light band) of your nights, around the median. Bins need at least 5 nights.</p></InspectorNotes>
+      <div className="vgrid" style={{ gridTemplateRows: showWeeks ? 'minmax(0, 1.7fr) minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
+        <Panel title={`Typical night: ${m.label}`} sub={mode === 'clock' ? 'Clock time, from 20:00' : 'Time since falling asleep'} method={m.method} job={job} needs={needs} loading={loading && !ta} error={error}>
+          {ta && ta.minute.length > 0 && (
+            <Fill>{({ h }) => <QuantileBands a={ta} b={tb && tb.minute.length ? tb : null} align={mode} bin={BIN} span={span} unit={m.unit} fmt={fmt} labelA="A" labelB="B" height={Math.max(120, h - 22)} />}</Fill>
+          )}
+          {ta && ta.minute.length === 0 && !needs && <Empty>Fewer than 5 nights in {periodLabel(a)} have this signal.</Empty>}
+          {b && tb && tb.minute.length === 0 && <p className="muted">Period B has fewer than 5 nights with this signal.</p>}
+        </Panel>
+        {showWeeks && (
+          <Panel scroll title="Week by week" sub={`The median curve of each calendar week in period A, on one scale${weeks.length === MAX_WEEKS ? ` (the latest ${MAX_WEEKS} weeks)` : ''}. Shaded: middle half of the week's nights.`} method={m.method} job={{ kind: 'typical', metric: m.id, align: mode, per: 'week' }} loading={wk.loading && !wk.data.length}>
+            <SmallMultiples items={weeks.map(([f], i) => ({ label: isoDay(f), t: (wk.data[i]?.a ?? null) as Typ | null }))} domain={domain} span={span} bin={BIN} />
+          </Panel>
+        )}
+      </div>
+    </View>
   );
 }
 

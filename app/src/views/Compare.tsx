@@ -8,6 +8,7 @@ import { col } from '../lib/util';
 import { DeltaBar, PairedStrip } from '../charts/analysis/dots';
 import { Card, Desktop, Intro, JobNote } from '../charts/analysis/frame';
 import { fmt, metricLabel, toRanges } from '../charts/analysis/inputs';
+import { View } from '../ui/View';
 
 interface FeatureDiff { feature: string; median_sel: number | null; median_base: number | null; cliffs_delta: number | null; ks_d: number | null; n_sel: number; n_base: number }
 interface Compared { features: FeatureDiff[]; labels: [string, number, number][]; n_sel: number; n_base: number }
@@ -84,12 +85,13 @@ function Body() {
   const rows = res ? (all ? res.features : res.features.slice(0, 25)) : [];
   const selText = sel.map(([a, b]) => (a === b ? isoDay(a) : `${isoDay(a)} to ${isoDay(b)}`)).join(', ');
 
+  const hasLabels = !!res && res.labels.length > 0;
   return (
-    <div className="page">
-      <h1>Compare</h1>
-      <Intro>What is different about a chosen set of nights. Every night feature is ranked by Cliff's delta: the chance a chosen night is higher than a base night, minus the chance it is lower (+1 always higher, 0 no difference, -1 always lower).</Intro>
-      <div className="card">
-        <div className="row">
+    <View
+      title="Compare"
+      desc="What sets a chosen set of nights apart, feature by feature."
+      tools={(
+        <>
           <label>Label kind <select value="" onChange={(e) => pickKind(e.target.value)} aria-label="Select by label kind">
             <option value="">choose...</option>
             {LABEL_KINDS.filter((k) => kinds.get(k.kind)).map((k) => <option key={k.kind} value={k.kind}>{k.name} ({kinds.get(k.kind)})</option>)}
@@ -103,20 +105,19 @@ function Body() {
             <option value="span">Other nights within the selection's span</option>
             <option value="range">All other nights in the date range</option>
           </select></label>
-        </div>
-        <div className="row" style={{ marginTop: 8 }}>
-          <label style={{ flex: 1 }}>Selection <input style={{ width: '100%' }} className="mono" value={text ?? selP} onChange={(e) => setText(e.target.value)} onBlur={() => { if (text !== null) { setSel(formatSel(parseSel(text)) || null); setText(null); } }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} placeholder="day ranges, a-b,c-d (from Nights: shift-drag)" aria-label="Selection (day ranges)" /></label>
+          <label>Selection <input style={{ width: 220 }} className="mono" value={text ?? selP} onChange={(e) => setText(e.target.value)} onBlur={() => { if (text !== null) { setSel(formatSel(parseSel(text)) || null); setText(null); } }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} placeholder="day ranges, a-b,c-d (from Nights: shift-drag)" aria-label="Selection (day ranges)" /></label>
           {selP && <button onClick={() => setSel(null)}>Clear</button>}
-        </div>
-        {sel.length > 0 && <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>{selText}</p>}
-      </div>
+          {sel.length > 0 && <span className="muted" style={{ fontSize: 12 }}>{selText}</span>}
+          {sel.length > 0 && <JobNote loading={loading} error={error} />}
+        </>
+      )}
+    >
+      <Intro>What is different about a chosen set of nights. Every night feature is ranked by Cliff's delta: the chance a chosen night is higher than a base night, minus the chance it is lower (+1 always higher, 0 no difference, -1 always lower).</Intro>
       {!nights || nights.n === 0 ? <div className="empty">No nights loaded yet.</div>
         : sel.length === 0 ? <div className="empty" data-testid="no-selection">Choose nights above, or shift-drag nights in the Nights view and pick "Compare these nights".</div>
-        : (
-          <>
-            <JobNote loading={loading} error={error} />
-            {res && (
-              <Card title={`Ranked differences: ${res.n_sel} chosen nights against ${res.n_base} base nights`} method="compare.nights" job={job} testid="compare-ranked">
+        : res && (
+          <div className="vgrid" style={{ gridTemplateColumns: hasLabels ? 'minmax(0, 1.6fr) minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
+            <Card title={`Ranked differences: ${res.n_sel} chosen nights against ${res.n_base} base nights`} method="compare.nights" job={job} testid="compare-ranked" scroll>
                 {res.n_sel < 3 || res.n_base < 3 ? <div className="empty">At least 3 nights are needed on each side.</div> : (
                   <>
                     <div className="row muted" style={{ fontSize: 12, marginBottom: 6 }}><span style={{ color: PAL.alert }}>&#9679; chosen</span><span style={{ color: PAL.base }}>&#9679; base</span><span>medians as ticks</span></div>
@@ -127,10 +128,10 @@ function Body() {
                     {res.features.length > 25 && <button onClick={() => setAll(!all)} style={{ marginTop: 8 }}>{all ? 'Show the top 25' : `Show all ${res.features.length}`}</button>}
                   </>
                 )}
+                {!hasLabels && <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>Open a night: <a href={`/night/${sel[0]![0]}`} onClick={(e) => { e.preventDefault(); navigate(`/night/${sel[0]![0]}`); }}>{isoDay(sel[0]![0])}</a>.</p>}
               </Card>
-            )}
-            {res && res.labels.length > 0 && (
-              <Card title="Tags and labels: share of nights" method="compare.nights" job={job} testid="compare-labels">
+            {hasLabels && (
+              <Card title="Tags and labels: share of nights" method="compare.nights" job={job} testid="compare-labels" scroll>
                 <table className="t">
                   <thead><tr><th>Label</th><th className="n">Chosen</th><th className="n">Base</th><th /></tr></thead>
                   <tbody>
@@ -149,12 +150,12 @@ function Body() {
                     ))}
                   </tbody>
                 </table>
+              <p className="muted" style={{ fontSize: 12, margin: '10px 0 0' }}>Open a night: <a href={`/night/${sel[0]![0]}`} onClick={(e) => { e.preventDefault(); navigate(`/night/${sel[0]![0]}`); }}>{isoDay(sel[0]![0])}</a>.</p>
               </Card>
             )}
-            <p className="muted" style={{ fontSize: 12 }}>Open a night: <a href={`/night/${sel[0]![0]}`} onClick={(e) => { e.preventDefault(); navigate(`/night/${sel[0]![0]}`); }}>{isoDay(sel[0]![0])}</a>.</p>
-          </>
+          </div>
         )}
-    </div>
+    </View>
   );
 }
 

@@ -7,6 +7,9 @@ import { col, finite } from '../lib/util';
 import { link, navigate, useParam } from '../lib/router';
 import { BandBar, Empty, Spark } from '../charts/small';
 import { MethodButton } from '../layout/MethodPanel';
+import { View, ViewEmpty } from '../ui/View';
+import { Panel } from '../ui/Panel';
+import { Fill } from '../ui/Fill';
 
 type Metric = { id: string; label: string; unit: string; fmt: (v: number) => string; method: string };
 const METRICS: Metric[] = [
@@ -41,7 +44,7 @@ function MetricRow({ m, day }: { m: Metric; day: number }) {
   );
 }
 
-function Heatmap({ nights, metric }: { nights: Table; metric: string }) {
+function Heatmap({ nights, metric, w, h }: { nights: Table; metric: string; w: number; h: number }) {
   const days = col(nights, 'day');
   const vals = col(nights, metric);
   const last = days[days.length - 1] ?? 0;
@@ -50,13 +53,16 @@ function Heatmap({ nights, metric }: { nights: Table; metric: string }) {
   const q = (p: number) => f[Math.floor(p * (f.length - 1))] ?? 0;
   const lo = q(0.03), hi = q(0.97);
   const by = new Map(days.map((d, i) => [d, vals[i]!]));
+  const cell = Math.max(6, Math.floor(Math.min((w - 28) / 53, (h - 4) / 7)));
+  const gap = cell >= 10 ? 2 : 1;
   const cells = [];
   for (let d = start; d <= last; d++) {
-    const w = Math.floor((d - start) / 7), r = weekday(d);
+    const wk = Math.floor((d - start) / 7), r = weekday(d);
     const v = by.get(d);
-    cells.push(<rect key={d} x={w * 13} y={r * 13} width={11} height={11} rx={2} fill={v !== undefined && finite(v) ? sequential((v - lo) / (hi - lo || 1)) : PAL.panel2} onClick={() => v !== undefined && navigate(`/night/${d}`)} style={{ cursor: v !== undefined ? 'pointer' : 'default' }}><title>{isoDay(d)}: {finite(v ?? NaN) ? v!.toFixed(2) : 'no data'}</title></rect>);
+    cells.push(<rect key={d} x={28 + wk * cell} y={r * cell} width={cell - gap} height={cell - gap} rx={2} fill={v !== undefined && finite(v) ? sequential((v - lo) / (hi - lo || 1)) : PAL.panel2} onClick={() => v !== undefined && navigate(`/night/${d}`)} style={{ cursor: v !== undefined ? 'pointer' : 'default' }}><title>{isoDay(d)}: {finite(v ?? NaN) ? v!.toFixed(2) : 'no data'}</title></rect>);
   }
-  return <svg width={53 * 13} height={7 * 13} role="img" aria-label={`Calendar of ${metric}`}>{cells}</svg>;
+  const lab = (r: number, t: string) => <text key={t} x={0} y={r * cell + cell - gap - 1} fontSize={10} fill={PAL.muted}>{t}</text>;
+  return <svg width={28 + 53 * cell} height={7 * cell} role="img" aria-label={`Calendar of ${metric}`}>{[lab(0, 'M'), lab(2, 'W'), lab(4, 'F')]}{cells}</svg>;
 }
 
 export default function Today() {
@@ -69,12 +75,9 @@ export default function Today() {
   const w = useMemo(() => (model ? whatIf(model, load) : null), [model, load]);
   if (!nights || nights.n === 0) {
     return (
-      <div className="page">
-        <h1>Today</h1>
-        <Empty>
-          {app.loading ? 'Loading your data...' : (<>No data yet. <a href="/data" onClick={link('/data')}>Import a Garmin export or connect garmin-mcp</a>, or <button onClick={() => void loadDemo()}>load demo data</button>.</>)}
-        </Empty>
-      </div>
+      <ViewEmpty title="Today">
+        {app.loading ? 'Loading your data...' : !app.storageOk ? 'This page is not in a secure context, so the browser cannot store your data. Open it over HTTPS (or on localhost).' : (<>No data yet. <a href="/data" onClick={link('/data')}>Import a Garmin export or connect garmin-mcp</a>, or <button onClick={() => void loadDemo()}>load demo data</button>.</>)}
+      </ViewEmpty>
     );
   }
   const h = hrv?.headline as Record<string, any> | undefined;
@@ -82,16 +85,16 @@ export default function Today() {
   const open = state.proposals.filter((p) => p.status === 'open' && p.asked).slice(0, 3);
   const spark = hrv?.spark as Table | undefined;
   return (
-    <div className="page">
-      <h1>Last night <span className="muted mono" style={{ fontSize: 13 }}>{isoDay(lastDay)}</span></h1>
-      <div className="grid2">
-        <div className="card">
-          <div className="row" style={{ justifyContent: 'space-between' }}><h2>Against your own baseline</h2><a href={`/night/${lastDay}`} onClick={link(`/night/${lastDay}`)}>Open the night</a></div>
+    <View
+      title={<>Last night <span className="muted mono">{isoDay(lastDay)}</span></>}
+      tools={<a href={`/night/${lastDay}`} onClick={link(`/night/${lastDay}`)}>Open the night</a>}
+    >
+      <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1fr)', gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr)' }}>
+        <Panel title="Against your own baseline" scroll>
           <table className="t"><thead><tr><th>Signal</th><th className="n">Last night</th><th className="n">Usual</th><th className="n">z</th><th>Band</th></tr></thead>
             <tbody>{METRICS.map((m) => <MetricRow key={m.id} m={m} day={lastDay} />)}</tbody></table>
-        </div>
-        <div className="card">
-          <div className="row" style={{ justifyContent: 'space-between' }}><h2>HRV advice</h2><MethodButton id="baseline.normal_range" job={{ kind: 'hrv4t' }} /></div>
+        </Panel>
+        <Panel title="HRV advice" method="baseline.normal_range" job={{ kind: 'hrv4t' }}>
           {h && adv ? (
             <>
               <div className="row"><span style={{ fontSize: 34, fontWeight: 700 }} className="mono">{num(h.score, 1)}</span><span className="chip" style={{ background: adv.color }}>{adv.label}</span></div>
@@ -100,7 +103,7 @@ export default function Today() {
                 <span>7-night baseline {num(h.base_score, 1)} ({signed(h.base_change ?? NaN, 2)})</span><span>CV {num(h.cv7, 2)}</span><span>Pattern: {h.trend ?? 'none'}</span>
                 <span>Model expected {num(h.expected, 1)}, surprise {signed(h.surprise ?? NaN, 1)} SD</span>
               </div>
-              {spark && <div style={{ marginTop: 8 }}><Spark values={col(spark, 'score')} width={420} height={44} /></div>}
+              {spark ? <Fill style={{ minHeight: 40, marginTop: 8 }}>{({ w: sw, h: sh }) => <Spark values={col(spark, 'score')} width={sw} height={Math.max(40, sh)} />}</Fill> : <div style={{ flex: 1 }} />}
               {w && model && (
                 <div style={{ marginTop: 10 }}>
                   <label>What if I train <span className="mono">{load}</span> load today? <input type="range" min={0} max={400} step={5} value={load} onChange={(e) => setLoad(+e.target.value)} aria-label="Planned load" /></label>
@@ -109,12 +112,9 @@ export default function Today() {
               )}
             </>
           ) : <Empty>Not enough HRV nights yet.</Empty>}
-        </div>
-      </div>
-      {open.length > 0 && (
-        <div className="card">
-          <div className="row" style={{ justifyContent: 'space-between' }}><h2>Is this right?</h2><a href="/inbox" onClick={link('/inbox')}>All suggestions</a></div>
-          {open.map((p) => (
+        </Panel>
+        <Panel title="Is this right?" scroll actions={<a href="/inbox" onClick={link('/inbox')}>All suggestions</a>}>
+          {open.length === 0 ? <div className="empty">Nothing to confirm right now.</div> : open.map((p) => (
             <div key={p.id} className="row" style={{ padding: '6px 0', borderTop: `1px solid ${PAL.grid}` }}>
               <b style={{ color: kindInfo(p.kind).color }}>{kindInfo(p.kind).name}</b>
               <span className="mono">{isoDay(p.start_day)}{p.end_day > p.start_day ? ` to ${isoDay(p.end_day)}` : ''}</span>
@@ -124,18 +124,19 @@ export default function Today() {
               <button onClick={() => void answer(p.id, 'deny')}>Deny</button>
             </div>
           ))}
-        </div>
-      )}
-      <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2>The last year</h2>
-          <select value={metric} onChange={(e) => setMetric(e.target.value)} aria-label="Heatmap metric">
-            {['ln_rmssd', 'hr_min30', 'resp_mean', 'sleep_stress', 'tst_h', 'sleep_score', 'dip_pct', 'rmssd_norm'].map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-        <div style={{ overflowX: 'auto' }}><Heatmap nights={nights} metric={metric} /></div>
+        </Panel>
+        <Panel
+          title="The last year"
+         
+          actions={(
+            <select value={metric} onChange={(e) => setMetric(e.target.value)} aria-label="Heatmap metric">
+              {['ln_rmssd', 'hr_min30', 'resp_mean', 'sleep_stress', 'tst_h', 'sleep_score', 'dip_pct', 'rmssd_norm'].map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          )}
+        >
+          <Fill>{({ w: fw, h: fh }) => <Heatmap nights={nights} metric={metric} w={fw} h={fh} />}</Fill>
+        </Panel>
       </div>
-      <p className="muted">Data through {isoDay(lastDay)}.</p>
-    </div>
+    </View>
   );
 }
