@@ -945,19 +945,37 @@ async fn notifications_fire_within_the_budget() {
         Some(json!({"answer": "confirm"})),
     )
     .await;
-    for _ in 0..50 {
-        if cap.hook.lock().unwrap().len() > before {
+    let answered = || {
+        cap.hook.lock().unwrap()[before..]
+            .iter()
+            .find(|h| h["type"] == "answered")
+            .cloned()
+    };
+    for _ in 0..100 {
+        if answered().is_some() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
-    let hook = cap.hook.lock().unwrap().clone();
-    assert_eq!(hook.len(), before + 1);
-    let last = hook.last().unwrap();
-    assert_eq!(last["type"], "answered");
+    let last = answered().expect("an answered event");
     assert_eq!(last["proposal"]["id"], "illness:20100");
     assert_eq!(last["proposal"]["status"], "confirmed");
     assert_eq!(last["label"]["kind"], "illness");
+    // the unsent question was never mentioned; detection (no data here) retired the other sent one, and said so
+    let events = cap.hook.lock().unwrap()[before..].to_vec();
+    assert!(!events.iter().any(|h| h["proposal"]["id"] == "stress:20140"));
+    for _ in 0..100 {
+        if cap.hook.lock().unwrap()[before..]
+            .iter()
+            .any(|h| h["type"] == "expired")
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(cap.hook.lock().unwrap()[before..]
+        .iter()
+        .any(|h| h["type"] == "expired" && h["proposal"]["id"] == "alcohol:20120"));
 }
 
 #[test]
