@@ -119,6 +119,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDemo(false);
       const s = await storeRef.current.load();
       await settle(s, true);
+      // thresholds take a minute on a real account: work them out in the background (second worker, cached per sync)
+      if (m) setTimeout(() => void engine.run({ kind: 'dfa' }).catch(() => {}), 5000);
     } finally {
       setLoading(null);
     }
