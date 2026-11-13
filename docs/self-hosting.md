@@ -61,6 +61,7 @@ Other commands in the image: `serve` (the default), `detect` (rerun detection an
 | `LAB_SYNC_MINUTES` | `15` | |
 | `NTFY_URL`, `NTFY_TOKEN` | unset | An ntfy topic and, if it needs one, an access token. |
 | `NOTIFY_WEBHOOK_URL` | unset | |
+| `NOTIFY_WEBHOOK_TOKEN` | unset | sent as `Authorization: Bearer <token>` with every webhook call |
 | `LAB_MCP` | `on` | `off` disables `/mcp`. |
 
 Empty values count as unset, so compose's `${VAR:-}` is safe.
@@ -80,7 +81,7 @@ To connect an MCP client, point it at `https://<your lab>/mcp` (streamable HTTP)
 When the Inbox has a question the policy wants to ask (see [inference](inference.md)), the lab sends it to:
 
 - **ntfy:** set `NTFY_URL` to a topic URL (for example `https://ntfy.sh/your-long-random-topic`; self-host ntfy if you do not want a third party to see the text). The message carries a link to the Inbox when `LAB_PUBLIC_URL` is set.
-- **Webhook:** `NOTIFY_WEBHOOK_URL` receives a JSON POST: `{"type": "proposal", "proposal": {...}, "text": "...", "url": "..."}`; the test message is `{"type": "test", ...}`.
+- **Webhook:** `NOTIFY_WEBHOOK_URL` receives a JSON POST: `{"type": "proposal", "proposal": {...}, "text": "...", "url": "..."}`; the test message is `{"type": "test", ...}`. When a question that was sent is answered (in the app, or by whatever the webhook calls back through `/api/proposals/{id}/answer`), the webhook gets `{"type": "answered", "proposal": {...}, "label": {...} | null, "url": "..."}`, and `{"type": "reopened", ...}` after an undo, so a chat message can be edited to say so. With `NOTIFY_WEBHOOK_TOKEN` set, every call carries it as a bearer token.
 
 Settings has a test button (`POST /api/notify/test`) and switches for each channel. Questions are limited by the weekly budget (default 2).
 

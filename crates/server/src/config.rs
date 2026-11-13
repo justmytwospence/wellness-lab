@@ -45,6 +45,14 @@ pub struct Config {
     pub ntfy_token: Option<String>,
     #[arg(long, env = "NOTIFY_WEBHOOK_URL", global = true)]
     pub webhook_url: Option<String>,
+    /// Sent as `Authorization: Bearer <token>` with every webhook call.
+    #[arg(
+        long,
+        env = "NOTIFY_WEBHOOK_TOKEN",
+        global = true,
+        hide_env_values = true
+    )]
+    pub webhook_token: Option<String>,
     /// Serve the read-only MCP endpoint at /mcp: on or off.
     #[arg(long, env = "LAB_MCP", default_value = "on", global = true)]
     pub mcp: String,
@@ -65,6 +73,7 @@ impl Default for Config {
             ntfy_url: None,
             ntfy_token: None,
             webhook_url: None,
+            webhook_token: None,
             mcp: "on".into(),
         }
     }

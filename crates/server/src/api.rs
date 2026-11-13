@@ -415,6 +415,7 @@ async fn answer(
         tracing::warn!(error = %format!("{e:#}"), "detection after an answer failed");
     }
     let p = s.store.proposal(&id)?.unwrap_or(p);
+    notify::tell_answer(&s, &p, label.as_ref());
     Ok(Json(json!({"proposal": p, "label": label})))
 }
 
@@ -450,6 +451,7 @@ async fn undo(
         }
     }
     lab::push_state(&s)?;
+    notify::tell_answer(&s, &p, None);
     Ok(Json(json!({"proposal": p})))
 }
 

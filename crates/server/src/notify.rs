@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
-use wellness_lab_core::labels::{LabelKind, Proposal, ProposalStatus};
+use wellness_lab_core::labels::{Label, LabelKind, Proposal, ProposalStatus};
 use wellness_lab_core::time::ymd;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -120,7 +120,34 @@ pub async fn send_webhook(s: &AppState, payload: &Value) -> Result<(), String> {
         .webhook_url
         .as_deref()
         .ok_or("NOTIFY_WEBHOOK_URL is not set")?;
-    check(s.http.post(url).timeout(TIMEOUT).json(payload).send().await).await
+    let mut rq = s.http.post(url).timeout(TIMEOUT).json(payload);
+    if let Some(t) = &s.cfg.webhook_token {
+        rq = rq.bearer_auth(t);
+    }
+    check(rq.send().await).await
+}
+
+/// Tell the webhook that a question it was sent has been answered (or reopened), so whatever showed it (a chat
+/// message, say) can say so. Questions that were never sent are not mentioned; failures are logged, never retried.
+pub fn tell_answer(s: &Arc<AppState>, p: &Proposal, label: Option<&Label>) {
+    if s.cfg.webhook_url.is_none() || p.notified_at.is_none() {
+        return;
+    }
+    match s.store.settings() {
+        Ok(st) if st.notify_webhook => {}
+        _ => return,
+    }
+    let payload = json!({
+        "type": if p.status == ProposalStatus::Open { "reopened" } else { "answered" },
+        "proposal": p,
+        "label": label,
+        "url": s.cfg.inbox_url(),
+    });
+    let (s, id) = (s.clone(), p.id.clone());
+    tokio::spawn(async move {
+        let r = send_webhook(&s, &payload).await;
+        log(&s, Some(&id), "webhook", &r, &now());
+    });
 }
 
 fn likely_illness(p: &Proposal) -> bool {

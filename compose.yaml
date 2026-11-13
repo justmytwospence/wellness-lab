@@ -18,6 +18,7 @@
 #   LAB_PUBLIC_URL      where you reach the lab (https://lab.example.com), for links in notifications
 #   NTFY_URL            an ntfy topic URL for questions about episodes (optional)
 #   NOTIFY_WEBHOOK_URL  a webhook that receives the same questions as JSON (optional)
+#   NOTIFY_WEBHOOK_TOKEN  bearer token for that webhook (optional)
 #   WELLNESS_LAB_VERSION, WELLNESS_LAB_PORT, WELLNESS_LAB_MEMORY
 
 services:
@@ -29,6 +30,7 @@ services:
       LAB_PUBLIC_URL: ${LAB_PUBLIC_URL:-}
       NTFY_URL: ${NTFY_URL:-}
       NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
+      NOTIFY_WEBHOOK_TOKEN: ${NOTIFY_WEBHOOK_TOKEN:-}
     volumes:
       - wellness-lab-data:/data
       - ./import:/import:ro

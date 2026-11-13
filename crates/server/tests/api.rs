@@ -804,6 +804,7 @@ async fn sync_downloads_changes_and_deletes_removed_files() {
 struct Captured {
     ntfy: Arc<Mutex<Vec<(HeaderMap, String)>>>,
     hook: Arc<Mutex<Vec<Value>>>,
+    hook_auth: Arc<Mutex<Vec<String>>>,
 }
 
 async fn stub_ntfy(State(c): State<Captured>, headers: HeaderMap, body: String) -> StatusCode {
@@ -811,7 +812,14 @@ async fn stub_ntfy(State(c): State<Captured>, headers: HeaderMap, body: String) 
     StatusCode::OK
 }
 
-async fn stub_hook(State(c): State<Captured>, body: String) -> StatusCode {
+async fn stub_hook(State(c): State<Captured>, headers: HeaderMap, body: String) -> StatusCode {
+    c.hook_auth.lock().unwrap().push(
+        headers
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string(),
+    );
     c.hook
         .lock()
         .unwrap()
@@ -847,6 +855,7 @@ async fn notifications_fire_within_the_budget() {
     c.ntfy_url = Some(format!("{url}/ntfy"));
     c.ntfy_token = Some("ntfy-secret".into());
     c.webhook_url = Some(format!("{url}/hook"));
+    c.webhook_token = Some("hook-secret".into());
     c.public_url = Some("https://lab.example".into());
     let s = AppState::open(c).unwrap();
     for p in [
@@ -886,6 +895,12 @@ async fn notifications_fire_within_the_budget() {
     assert_eq!(hook[0]["proposal"]["id"], "illness:20100");
     assert_eq!(hook[0]["text"], json!(ntfy[0].1));
     assert_eq!(hook[0]["url"], "https://lab.example/inbox");
+    assert!(cap
+        .hook_auth
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|a| a == "Bearer hook-secret"));
 
     let stored = s.store.proposal("illness:20100").unwrap().unwrap();
     assert!(stored.notified_at.is_some());
@@ -913,6 +928,36 @@ async fn notifications_fire_within_the_budget() {
         cap.ntfy.lock().unwrap().last().unwrap().1,
         "Wellness Lab test notification"
     );
+
+    // answering a question that was sent tells the webhook, so the message can say so; an unsent one does not
+    let before = cap.hook.lock().unwrap().len();
+    call(
+        &app,
+        Method::POST,
+        "/api/proposals/stress:20140/answer",
+        Some(json!({"answer": "deny"})),
+    )
+    .await;
+    call(
+        &app,
+        Method::POST,
+        "/api/proposals/illness:20100/answer",
+        Some(json!({"answer": "confirm"})),
+    )
+    .await;
+    for _ in 0..50 {
+        if cap.hook.lock().unwrap().len() > before {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let hook = cap.hook.lock().unwrap().clone();
+    assert_eq!(hook.len(), before + 1);
+    let last = hook.last().unwrap();
+    assert_eq!(last["type"], "answered");
+    assert_eq!(last["proposal"]["id"], "illness:20100");
+    assert_eq!(last["proposal"]["status"], "confirmed");
+    assert_eq!(last["label"]["kind"], "illness");
 }
 
 #[test]
