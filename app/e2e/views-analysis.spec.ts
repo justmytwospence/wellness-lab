@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { go } from './helpers';
 
 /** Open the demo (730 synthetic nights, injected illness labels) and wait until Today has rendered. */
 async function openDemo(page: Page) {
@@ -12,8 +13,7 @@ async function openDemo(page: Page) {
 
 /** Go to a route through the rail (client-side, so the demo data stays loaded). */
 async function visit(page: Page, path: string) {
-  await page.locator(`nav[aria-label="Views"] a[href="${path}"]`).click();
-  await expect(page).toHaveURL(new RegExp(`${path}(\\?.*)?$`));
+  await go(page, path);
 }
 
 const noBoundary = (page: Page) => expect(page.locator('[data-testid=error-boundary]')).toHaveCount(0);
@@ -64,11 +64,18 @@ test.describe('analysis views on demo data', () => {
     // Garmin: regressions, Body Battery, band grid, stress vs HR (or the missing-input message)
     await visit(page, '/garmin');
     await expect(page.getByRole('heading', { name: 'Garmin', level: 1 })).toBeVisible();
+    const pick = (id: string) => page.locator(`[data-testid=focus-item][data-id=${id}]`).click();
+    await pick('bb');
     await expect(page.getByTestId('card-bb')).toBeVisible();
+    await pick('band');
     await expect(page.getByTestId('card-hrv-band')).toBeVisible();
+    await pick('stress');
     await expect(page.getByTestId('card-stress-hr')).toBeVisible();
+    await pick('sleep');
     await expect(page.locator('[data-testid=reg-garmin\\.teardown-Sleep\\ score\\ from\\ its\\ sub-scores]')).toContainText(/Coefficient|Not available from this data source/);
+    await pick('bb');
     await expect(page.getByTestId('bb-heatmap').locator('svg rect').first()).toBeVisible();
+    await pick('band');
     await expect(page.getByTestId('band-grid-sd').locator('svg rect').first()).toBeVisible();
     await expect(page.getByTestId('band-best')).toContainText('Best fit');
     await noBoundary(page);

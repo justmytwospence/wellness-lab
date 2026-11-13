@@ -1,11 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
+import { go } from './helpers';
 
 // The demo data (core::synth) has nightly HRV, sleep and training load but no beat-to-beat intervals, so /thresholds and
 // /beats may legitimately show the "Not available from this data source" message instead of charts.
 const CHART = 'main canvas, main svg[data-chart]';
 
+const PATHS: Record<string, string> = { HRV: '/hrv', Thresholds: '/thresholds', Beats: '/beats' };
 async function open(page: Page, link: string) {
-  await page.locator(`nav[aria-label="Views"] a[title="${link}"]`).click();
+  await go(page, PATHS[link]!);
 }
 
 test('HRV, Thresholds and Beats render on demo data', async ({ page }) => {
@@ -21,15 +23,15 @@ test('HRV, Thresholds and Beats render on demo data', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'About baseline.normal_range' })).toBeVisible();
 
   // controls sync to the URL; the notes column toggles with n
-  await page.getByLabel('Show', { exact: true }).selectOption('1y');
-  await expect(page).toHaveURL(/span=1y/);
+  await page.getByRole('button', { name: '1y', exact: true }).click();
+  await expect(page).toHaveURL(/range=1y/);
   await page.getByLabel('Normal range from').selectOption('28');
   await expect(page).toHaveURL(/nr=28/);
-  await expect(page.getByTestId('notes')).toBeVisible();
-  await page.keyboard.press('n');
   await expect(page.getByTestId('notes')).toHaveCount(0);
   await page.keyboard.press('n');
   await expect(page.getByTestId('notes')).toBeVisible();
+  await page.keyboard.press('n');
+  await expect(page.getByTestId('notes')).toHaveCount(0);
   for (const tab of ['Trends', 'Response', 'Inside the night', 'Model']) {
     await page.getByRole('tab', { name: tab }).click();
     await expect(page.locator(CHART).first()).toBeVisible({ timeout: 60_000 });

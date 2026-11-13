@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { go } from './helpers';
 import { expect, test, type Page } from '@playwright/test';
 
 const registry = readFileSync(fileURLToPath(new URL('../../crates/core/src/registry.rs', import.meta.url)), 'utf8');
@@ -17,7 +18,7 @@ async function demo(page: Page) {
 test('methods lists every registry method with grade and DOI links', async ({ page }) => {
   const errors = await demo(page);
   expect(METHOD_IDS.length).toBeGreaterThan(20);
-  await page.getByRole('link', { name: 'Methods' }).click();
+  await go(page, '/methods');
   await expect(page.getByRole('heading', { name: 'Methods', level: 1 })).toBeVisible();
   await expect(page.locator('section[data-method]')).toHaveCount(METHOD_IDS.length);
   for (const id of METHOD_IDS) await expect(page.locator(`section[data-method="${id}"]`)).toHaveCount(1);
@@ -60,7 +61,7 @@ test('settings: edit and save, theme and clock', async ({ page }) => {
 
 test('sql: SELECT 1 and the starter queries on demo data', async ({ page }) => {
   const errors = await demo(page);
-  await page.getByRole('link', { name: 'SQL' }).click();
+  await go(page, '/sql');
   const run = page.getByRole('button', { name: 'Run', exact: true });
   await expect(run).toBeEnabled({ timeout: 90_000 });
   await expect(page.getByText('Demo data has no raw files. Load real data to query raw files')).toBeVisible();
