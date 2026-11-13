@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Panel } from '../ui/Panel';
+import { View } from '../ui/View';
+import { InspectorNotes } from '../ui/Inspector';
 import { useApp } from '../lib/app';
-import { useParam } from '../lib/router';
-import { MethodButton } from '../layout/MethodPanel';
 import { Empty } from './small';
 import './lab.css';
 
@@ -19,10 +20,9 @@ export function useNarrow(): boolean {
 
 export function NeedsLargerScreen({ name }: { name: string }) {
   return (
-    <div className="page">
-      <h1>{name}</h1>
+    <View title={name}>
       <Empty>This view needs a larger screen. Open <span className="mono">{location.pathname + location.search}</span> on a wider display.</Empty>
-    </div>
+    </View>
   );
 }
 
@@ -33,16 +33,7 @@ export function Missing({ needs }: { needs: string }) {
 
 /** A chart with its title, one-line subtitle and the method button. */
 export function ChartCard({ title, subtitle, method, job, children }: { title: string; subtitle?: ReactNode; method: string; job?: unknown; children: ReactNode }) {
-  return (
-    <section className="card" data-testid="chart-card">
-      <div className="chart-head">
-        <h2 style={{ margin: 0 }}>{title}</h2>
-        <MethodButton id={method} job={job} />
-      </div>
-      {subtitle && <div className="sub muted" style={{ fontSize: 12, marginBottom: 8, maxWidth: '90ch' }}>{subtitle}</div>}
-      {children}
-    </section>
-  );
+  return <Panel title={title} sub={subtitle} method={method} job={job}>{children}</Panel>;
 }
 
 export interface Key { color: string; label: string; line?: boolean }
@@ -50,29 +41,18 @@ export function Legend({ items }: { items: Key[] }) {
   return <div className="legend">{items.map((k) => <span key={k.label}><i className={k.line ? 'line' : ''} style={{ background: k.color }} />{k.label}</span>)}</div>;
 }
 
-/** The notes column: `n` toggles it (URL param `notes`). */
+/** True while the inspector drawer is open. The Shell owns the `n` and `i` keys. */
 export function useNotes(): boolean {
-  const [v, set] = useParam('notes', '1');
-  const cur = useRef(v);
-  cur.current = v;
-  useEffect(() => {
-    const on = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement;
-      if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === 'n') set(cur.current === '1' ? '0' : null);
-    };
-    window.addEventListener('keydown', on);
-    return () => window.removeEventListener('keydown', on);
-  }, [set]);
-  return v === '1';
+  return useApp().ui.inspector;
 }
 
-export function Split({ notes, children, aside }: { notes: boolean; children: ReactNode; aside: ReactNode }) {
+/** The view's main content, with its notes sent to the inspector drawer. */
+export function Split({ children, aside }: { notes?: boolean; children: ReactNode; aside: ReactNode }) {
   return (
-    <div className={`split${notes ? ' with-notes' : ''}`}>
-      <div className="stack" style={{ minWidth: 0 }}>{children}</div>
-      {notes && <aside className="notes" aria-label="Notes" data-testid="notes">{aside}</aside>}
-    </div>
+    <>
+      {children}
+      <InspectorNotes>{aside}</InspectorNotes>
+    </>
   );
 }
 

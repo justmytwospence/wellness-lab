@@ -13,16 +13,18 @@ export interface ActogramProps {
   days: number[];
   periodH: number;
   overlay: boolean;
+  /** fit the plot into this many CSS pixels of height (fractional row heights) */
+  fitHeight?: number;
 }
 
 const GUTTER = 62;
 const SLEEP = [122, 162, 255] as const;
 
 /** A double-plotted actogram: each row shows two consecutive periods, so a drifting rhythm reads as a diagonal. Sleep is tinted over the activity. */
-export function Actogram({ rgba, asleep, width, height, days, periodH, overlay }: ActogramProps) {
+export function Actogram({ rgba, asleep, width, height, days, periodH, overlay, fitHeight }: ActogramProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState<{ r: number; c: number } | null>(null);
-  const rowPx = Math.max(1, Math.min(4, Math.floor(1400 / Math.max(1, height))));
+  const rowPx = fitHeight ? Math.max(0.25, (fitHeight - 36) / Math.max(1, height)) : Math.max(1, Math.min(4, Math.floor(1400 / Math.max(1, height))));
   const pixels = useMemo(() => {
     const out = new Uint8ClampedArray(rgba.length);
     out.set(rgba);

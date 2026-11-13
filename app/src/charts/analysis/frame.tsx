@@ -1,22 +1,15 @@
 import { useSyncExternalStore, type ReactNode } from 'react';
-import { MethodButton } from '../../layout/MethodPanel';
+import { Panel } from '../../ui/Panel';
+import { InspectorNotes } from '../../ui/Inspector';
 
 export function NotAvailable({ input, inline }: { input: string; inline?: boolean }) {
   if (inline) return <span className="muted" role="note" data-testid="not-available">Not available from this data source: needs {input}</span>;
   return <div className="empty" role="note" data-testid="not-available">Not available from this data source: needs {input}</div>;
 }
 
-/** A chart card: title, the method button, optional actions, and the content. */
-export function Card({ title, method, job, actions, children, testid }: { title: ReactNode; method?: string; job?: unknown; actions?: ReactNode; children: ReactNode; testid?: string }) {
-  return (
-    <section className="card" data-testid={testid}>
-      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
-        <h2 style={{ margin: 0 }}>{title} {method && <MethodButton id={method} job={job} />}</h2>
-        {actions && <div className="row">{actions}</div>}
-      </div>
-      {children}
-    </section>
-  );
+/** A panel with a title, the method button, optional actions, and the content. */
+export function Card({ title, method, job, actions, children, testid, scroll }: { title: ReactNode; method?: string; job?: unknown; actions?: ReactNode; children: ReactNode; testid?: string; scroll?: boolean }) {
+  return <Panel title={title} method={method} job={job} actions={actions} testid={testid ?? 'chart-card'} scroll={scroll}>{children}</Panel>;
 }
 
 export function JobNote({ loading, error }: { loading: boolean; error: string | null }) {
@@ -39,5 +32,5 @@ export function Desktop({ children }: { children: ReactNode }) {
 }
 
 export function Intro({ children }: { children: ReactNode }) {
-  return <p className="muted" style={{ maxWidth: '90ch' }}>{children}</p>;
+  return <InspectorNotes><h2>About this view</h2><p>{children}</p></InspectorNotes>;
 }

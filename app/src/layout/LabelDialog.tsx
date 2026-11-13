@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LABEL_KINDS, kindInfo, type Label, type LabelKind } from '@wl/schema';
 import { isoDay, parseDay } from '@wl/views';
 import { useApp } from '../lib/app';
@@ -14,6 +14,11 @@ export function LabelDialog({ initial, onClose, proposalId }: { initial: Partial
   const [note, setNote] = useState(initial.note ?? '');
   const [excl, setExcl] = useState(initial.exclude_baseline ?? kindInfo(initial.kind ?? 'illness').exclude);
   const [touched, setTouched] = useState(initial.exclude_baseline !== undefined);
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, [onClose]);
   const save = async () => {
     const l = { ...initial, kind, start_day: parseDay(start), end_day: Math.max(parseDay(start), parseDay(end)), onset_day: onset ? parseDay(onset) : null, severity: sev || null, note, exclude_baseline: excl } as Label;
     if (proposalId) await answer(proposalId, 'confirm', l);

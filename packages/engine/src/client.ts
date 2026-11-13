@@ -14,6 +14,11 @@ export class EngineClient {
   private version = 'empty';
   private revision = 0;
   onProgress: (p: LoadProgress) => void = () => {};
+  /** Called with the kinds of the jobs in flight whenever that set changes. */
+  onBusy: (kinds: string[]) => void = () => {};
+  private inflight = new Map<number, string>();
+  private jobId = 0;
+  private emitBusy() { this.onBusy([...new Set(this.inflight.values())]); }
   manifest: Manifest | null = null;
 
   constructor(worker?: Worker) {
@@ -66,7 +71,16 @@ export class EngineClient {
     const key = `${this.version}#${this.revision}#${text}`;
     return this.memo.get(key, async () => {
       if (opts.alive && !opts.alive()) throw new Error('superseded');
-      const r = await this.call({ op: 'run', job: text });
+      const jid = ++this.jobId;
+      this.inflight.set(jid, (job as { kind: string }).kind);
+      this.emitBusy();
+      let r: Awaited<ReturnType<EngineClient['call']>>;
+      try {
+        r = await this.call({ op: 'run', job: text });
+      } finally {
+        this.inflight.delete(jid);
+        this.emitBusy();
+      }
       const out = JSON.parse(r.json!) as Record<string, unknown>;
       return Object.defineProperty(out, 'arrays', { value: r.arrays ?? {}, enumerable: false }) as unknown as Run<J>;
     }) as Promise<Run<J>>;

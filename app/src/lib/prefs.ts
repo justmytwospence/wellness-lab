@@ -42,3 +42,8 @@ export function fmtClock(hours: number, h12 = getH12()): string {
   if (!h12) return `${String(h).padStart(2, '0')}:${mm}`;
   return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h < 12 ? 'am' : 'pm'}`;
 }
+
+/** The inspector drawer (notes and methods) is closed until asked for. */
+export const getInspector = (): boolean => read('wl.inspector') === '1';
+export const setInspector = (b: boolean) => write('wl.inspector', b ? '1' : '0');
+export const useInspector = (): [boolean, (b: boolean) => void] => [useSyncExternalStore(subscribe, getInspector), setInspector];

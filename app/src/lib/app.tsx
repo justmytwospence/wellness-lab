@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, type ExperimentDef, type Label, type Manifest, type R
 import { parseRange, type Range } from '@wl/views';
 import { LAB_EMPTY } from './util';
 import { useParam } from './router';
+import { useInspector } from './prefs';
 
 export type Mode = 'booting' | 'local' | 'server';
 export interface Toast { id: number; text: string; undo?: () => void }
@@ -40,8 +41,12 @@ export interface AppCtx {
   syncNow(): Promise<void>;
   toast(text: string, undo?: () => void): void;
   toasts: Toast[];
+  /** engine jobs in flight (null when idle) */
+  busy: { kinds: string[]; since: number } | null;
+  /** false when the browser cannot keep files (no secure context or no OPFS) */
+  storageOk: boolean;
   nights: Table | null;
-  ui: { palette: boolean; help: boolean; method: string | null; setPalette(b: boolean): void; setHelp(b: boolean): void; setMethod(id: string | null): void };
+  ui: { palette: boolean; help: boolean; method: string | null; inspector: boolean; setPalette(b: boolean): void; setHelp(b: boolean): void; setMethod(id: string | null): void; setInspector(b: boolean): void };
 }
 
 const Ctx = createContext<AppCtx>(null as never);
@@ -65,7 +70,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [method, setMethod] = useState<string | null>(null);
+  const [inspector, setInspector] = useInspector();
+  const [busy, setBusy] = useState<{ kinds: string[]; since: number } | null>(null);
+  const storageOk = useMemo(() => window.isSecureContext && typeof navigator.storage?.getDirectory === 'function', []);
   const [rangeText, setRangeText] = useParam('range', '180d');
+  useEffect(() => {
+    engine.onBusy = (kinds) => setBusy((b) => (kinds.length === 0 ? null : { kinds, since: b?.since ?? Date.now() }));
+  }, [engine]);
   const storeRef = useRef(store);
   storeRef.current = store;
   const stateRef = useRef(state);
@@ -159,7 +170,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [engine]);
 
   useEffect(() => {
-    if (mode === 'booting' || needsLogin) return;
+    if (mode === 'booting' || needsLogin || !storageOk) return;
     (async () => {
       if (mode === 'server') {
         try {
@@ -175,7 +186,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await refreshData();
       if (new URLSearchParams(location.search).get('demo') === '1') await loadDemo();
     })().catch((e) => toast(String((e as Error).message ?? e)));
-  }, [mode, needsLogin, refreshData, toast, loadDemo]);
+  }, [mode, needsLogin, storageOk, refreshData, toast, loadDemo]);
 
   const wrap = useCallback(async (f: () => Promise<unknown>) => {
     await f();
@@ -214,8 +225,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveExperiment: (e) => wrap(() => storeRef.current.saveExperiment(e)),
     deleteExperiment: (id) => wrap(() => storeRef.current.deleteExperiment(id)),
     setAdherence: (id, day, adherent) => wrap(() => storeRef.current.setAdherence(id, day, adherent)),
-    refreshData, loadDemo, syncNow, toast, toasts,
-    ui: { palette, help, method, setPalette, setHelp, setMethod },
+    refreshData, loadDemo, syncNow, toast, toasts, busy, storageOk,
+    ui: { palette, help, method, inspector, setPalette, setHelp, setMethod, setInspector },
   };
   void LAB_EMPTY;
   if (import.meta.env.DEV || new URLSearchParams(location.search).get('debug') === '1') (window as unknown as { __wl: AppCtx }).__wl = value;

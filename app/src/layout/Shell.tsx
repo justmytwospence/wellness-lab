@@ -1,12 +1,13 @@
 import { Suspense, useEffect, useState } from 'react';
 import { Command } from 'cmdk';
-import { Command as CmdIcon, PanelLeft } from 'lucide-react';
-import { parseRange, formatRange, parseDay } from '@wl/views';
+import { Loader2, PanelRight, RefreshCw, Search, Waves } from 'lucide-react';
+import { parseDay } from '@wl/views';
 import { useApp } from '../lib/app';
 import { link, navigate, useLoc } from '../lib/router';
-import { ROUTES, routeFor } from '../routes';
+import { ROUTES, WORKSPACES, routeFor } from '../routes';
 import { ErrorBoundary } from '../charts/ErrorBoundary';
-import { MethodPanel } from './MethodPanel';
+import { InspectorPanel, InspectorProvider } from '../ui/Inspector';
+import { RangePicker } from '../ui/RangePicker';
 
 function useKeys() {
   const { ui, lastDay, state } = useApp();
@@ -20,7 +21,7 @@ function useKeys() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === '?') { ui.setHelp(!ui.help); return; }
       if (e.key === 'Escape') { ui.setMethod(null); ui.setHelp(false); ui.setPalette(false); return; }
-      if (e.key === '\\') { document.querySelector('.shell')?.classList.toggle('collapsed'); return; }
+      if (!g && (e.key === 'i' || e.key === 'n')) { ui.setInspector(!ui.inspector); return; }
       if (g) {
         g = false;
         clearTimeout(timer);
@@ -51,7 +52,7 @@ function Palette() {
             <Command.Empty>Nothing matches.</Command.Empty>
             {day !== null && <Command.Group heading="Night"><Command.Item value={`night ${q}`} onSelect={() => go(`/night/${day}`)}>Go to night {q}</Command.Item></Command.Group>}
             <Command.Group heading="Go to">
-              {ROUTES.filter((r) => r.rail).map((r) => <Command.Item key={r.path} value={`go ${r.name}`} onSelect={() => go(r.path)}><r.icon size={15} />{r.name}<span style={{ marginLeft: 'auto' }}><kbd>g</kbd> <kbd>{r.key}</kbd></span></Command.Item>)}
+              {ROUTES.map((r) => { const w = WORKSPACES.find((x) => x.id === r.ws)!; return <Command.Item key={r.path} value={`go ${w.name} ${r.name}`} onSelect={() => go(r.path.includes(':day') ? `/night/${lastDay}` : r.path)}><w.icon size={15} />{w.name} › {r.name}<span style={{ marginLeft: 'auto' }}><kbd>g</kbd> <kbd>{r.key}</kbd></span></Command.Item>; })}
               <Command.Item value="go last night" onSelect={() => go(`/night/${lastDay}`)}>Last night</Command.Item>
             </Command.Group>
             <Command.Group heading="Actions">
@@ -75,7 +76,7 @@ function Palette() {
 function Help() {
   const { ui } = useApp();
   if (!ui.help) return null;
-  const rows: [string, string][] = [['Ctrl/Cmd K', 'Command palette'], ['?', 'This sheet'], ['g then t n r y d h x b c i e m k o a p s f u', 'Go to a view (t today, n night, r nights, y typical, d trends, h HRV, x thresholds, b beats, c circadian, i inbox, e events, m compare, k bench, o models, a garmin, p experiments, s sql, f methods, u data)'], ['[  ]', 'Previous and next night'], ['a', 'Toggle onset and clock alignment (Nights, Typical)'], ['n', 'Toggle notes (HRV, Thresholds)'], ['l', 'Label this night'], ['c d u s e', 'Inbox: confirm, deny, not sure, snooze, edit'], ['j k', 'Inbox: next and previous card'], ['\\', 'Collapse the left rail'], ['Esc', 'Close panels']];
+  const rows: [string, string][] = [['Ctrl/Cmd K', 'Command palette'], ['?', 'This sheet'], ['i or n', 'Inspector: notes and methods'], ['j k', 'Next and previous chart in a list (Trends, Circadian, Events, Garmin) or card (Inbox)'], ['g then t n r y d h x b c i e m k o a p s f u', 'Go to a view (t today, n night, r nights, y typical, d trends, h HRV, x thresholds, b beats, c circadian, i inbox, e events, m compare, k bench, o models, a garmin, p experiments, s sql, f methods, u data)'], ['[  ]', 'Previous and next night'], ['a', 'Toggle onset and clock alignment (Nights, Typical)'], ['l', 'Label this night'], ['c d u s e', 'Inbox: confirm, deny, not sure, snooze, edit'], ['j k', 'Inbox: next and previous card'], ['Esc', 'Close panels']];
   return (
     <div className="overlay" onClick={() => ui.setHelp(false)}>
       <div className="dialog" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
@@ -107,40 +108,74 @@ function Login() {
   );
 }
 
-export function Shell() {
+const SPIN = { animation: 'spin 1s linear infinite' } as const;
+
+/** The path a workspace opens to: the last view visited in it, else its first. */
+function wsHome(id: string, lastDay: number): string {
+  const saved = sessionStorage.getItem('wl.ws.' + id);
+  const first = id === 'sleep' ? '/nights' : ROUTES.find((r) => r.ws === id)!.path;
+  const p = saved ?? first;
+  return p.includes(':day') ? `/night/${lastDay}` : p;
+}
+
+function ShellBody() {
   const app = useApp();
   const loc = useLoc();
   useKeys();
   const route = routeFor(loc.path);
+  const ws = WORKSPACES.find((w) => w.id === route?.ws);
   const open = app.state.proposals.filter((p) => p.status === 'open' && p.asked).length;
-  const [text, setText] = useState(app.rangeText);
-  useEffect(() => setText(app.rangeText), [app.rangeText]);
-  const apply = () => {
-    const r = parseRange(text, app.lastDay, app.firstDay);
-    if (r) app.setRangeText(text);
-    else app.toast(`Could not read "${text}" as a date range`);
-  };
-  const fresh = app.manifest ? `${app.demo ? 'demo' : `data from ${app.manifest.generated_at.slice(0, 10)}`}` : app.demo ? 'demo data' : 'no data';
+  const [syncing, setSyncing] = useState(false);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (route) sessionStorage.setItem('wl.ws.' + route.ws, loc.path);
+  }, [route, loc.path]);
+  useEffect(() => {
+    if (!app.busy) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [app.busy]);
+  const tabs = ws ? ROUTES.filter((r) => r.ws === ws.id) : [];
+  const status = app.loading
+    ? { c: 'var(--base)', t: `Loading files ${app.loading.done}/${app.loading.total}` }
+    : !app.storageOk && !app.demo
+      ? { c: 'var(--alert)', t: 'This page cannot store data: open it over HTTPS' }
+      : app.demo
+        ? { c: 'var(--hr)', t: 'Demo data, kept in memory' }
+        : app.manifest
+          ? { c: app.mode === 'server' ? 'var(--hrv)' : 'var(--base)', t: `${app.mode === 'server' ? 'garmin-mcp' : 'Imported'} · data from ${app.manifest.generated_at.slice(0, 10)}` }
+          : { c: 'var(--faint)', t: 'No data' };
   if (app.needsLogin) return <Login />;
   return (
     <div className="shell">
-      <nav className="rail" aria-label="Views">
-        <div className="brand"><PanelLeft size={18} onClick={() => document.querySelector('.shell')?.classList.toggle('collapsed')} style={{ cursor: 'pointer' }} /><span>Wellness Lab</span></div>
-        {ROUTES.filter((r) => r.rail).map((r) => {
-          const on = route?.path === r.path || (r.path === '/nights' && route?.path === '/night/:day');
-          return (
-            <a key={r.path} href={r.path} className={on ? 'active' : ''} onClick={link(r.path)} title={r.name}>
-              <r.icon size={16} /><span className="label">{r.name}</span>{r.path === '/inbox' && open > 0 && <span className="badge">{open}</span>}
-            </a>
-          );
-        })}
+      <nav className="rail" aria-label="Workspaces">
+        <div className="brand" title="Wellness Lab"><Waves size={20} /></div>
+        {WORKSPACES.filter((w) => !w.foot).map((w) => (
+          <a key={w.id} href={wsHome(w.id, app.lastDay)} className={ws?.id === w.id ? 'active' : ''} title={w.name} onClick={link(wsHome(w.id, app.lastDay))}>
+            <w.icon size={18} /><span>{w.name}</span>{w.id === 'journal' && open > 0 && <span className="badge">{open}</span>}
+          </a>
+        ))}
+        <div className="spacer" />
+        {WORKSPACES.filter((w) => w.foot).map((w) => (
+          <a key={w.id} href={wsHome(w.id, app.lastDay)} className={ws?.id === w.id ? 'active' : ''} title={w.name} onClick={link(wsHome(w.id, app.lastDay))}>
+            <w.icon size={18} /><span>{w.name}</span>
+          </a>
+        ))}
       </nav>
-      <header className="topbar">
-        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && apply()} onBlur={apply} aria-label="Date range" placeholder="last 180 days, 2025, summer 2024..." />
-        <span className="muted mono" style={{ fontSize: 12 }}>{formatRange(app.range)}</span>
+      <header className="header">
+        {tabs.length > 1 ? (
+          <nav className="tabs" aria-label="Views">
+            {tabs.map((r) => {
+              const to = r.path.includes(':day') ? `/night/${app.lastDay}` : r.path;
+              return <a key={r.path} href={to} title={r.name} className={route?.path === r.path ? 'on' : ''} onClick={link(to)}>{r.name}</a>;
+            })}
+          </nav>
+        ) : <span className="ws-name">{ws?.name ?? 'Wellness Lab'}</span>}
         <span className="spacer" />
-        <span className="muted" style={{ fontSize: 12 }}>{app.loading ? `loading ${app.loading.done}/${app.loading.total}` : fresh}</span>
-        <button onClick={() => app.ui.setPalette(true)} aria-label="Command palette"><CmdIcon size={13} /> K</button>
+        {route?.range && <RangePicker />}
+        {app.mode === 'server' && <button className="icon ghost" aria-label="Sync now" title="Sync now" disabled={syncing} onClick={() => { setSyncing(true); void app.syncNow().finally(() => setSyncing(false)); }}><RefreshCw size={14} style={syncing ? SPIN : undefined} /></button>}
+        <button onClick={() => app.ui.setPalette(true)} aria-label="Command palette" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Search size={13} /> Search <kbd>⌘K</kbd></button>
+        <button className="icon ghost" aria-label="Inspector" aria-pressed={app.ui.inspector} title="Inspector (i)" onClick={() => app.ui.setInspector(!app.ui.inspector)} style={app.ui.inspector ? { background: 'var(--hover)' } : undefined}><PanelRight size={15} /></button>
       </header>
       <main className="main">
         <ErrorBoundary name={route?.name} key={loc.path}>
@@ -149,13 +184,20 @@ export function Shell() {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <nav className="mobile-bar" aria-label="Main">
-        {ROUTES.filter((r) => r.mobile).map((r) => <a key={r.path} href={r.path} onClick={link(r.path)}>{r.name}</a>)}
-      </nav>
+      <InspectorPanel />
+      <footer className="statusbar">
+        <span><i className="dot" style={{ background: status.c }} />{status.t}</span>
+        {app.busy && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Loader2 size={12} style={SPIN} />Computing {app.busy.kinds.join(', ')} · {Math.max(0, Math.round((Date.now() - app.busy.since) / 1000))}s</span>}
+        <span className="spacer" />
+        <button className="ghost" onClick={() => app.ui.setHelp(true)}>Shortcuts <kbd>?</kbd></button>
+      </footer>
       <Palette />
       <Help />
-      <MethodPanel />
       {app.toasts.map((t) => <div className="toast" key={t.id} role="status">{t.text}{t.undo && <button onClick={() => { t.undo!(); }}>Undo</button>}</div>)}
     </div>
   );
+}
+
+export function Shell() {
+  return <InspectorProvider><ShellBody /></InspectorProvider>;
 }

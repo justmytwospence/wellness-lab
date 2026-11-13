@@ -1,6 +1,6 @@
 /** The "Night monitor" palette, from the HRV notebook. */
 export const PAL = {
-  bg: '#0b1020', panel: '#111831', panel2: '#172042', grid: '#222c52', text: '#e6ebff', muted: '#8892b8',
+  bg: '#0a0b0d', panel: '#111316', panel2: '#171a1e', grid: '#1d2127', text: '#e8eaed', muted: '#8b9099',
   hrv: '#2ee6c5', hr: '#ffb547', alert: '#ff6b6b', base: '#7aa2ff', violet: '#b892ff',
 } as const;
 
@@ -27,5 +27,5 @@ export function sequential(t: number): string {
 /** Diverging color for z in about -3..3: blue below, dark at 0, red above. */
 export function diverging(z: number): string {
   const t = Math.min(1, Math.abs(z) / 3);
-  return mix('#16204a', z < 0 ? '#7aa2ff' : '#ff6b6b', t);
+  return mix('#1b1e24', z < 0 ? '#7aa2ff' : '#ff6b6b', t);
 }

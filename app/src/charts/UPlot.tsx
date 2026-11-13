@@ -17,14 +17,16 @@ export function UPlot({ options, data, height = 160, sync, onReady, className }:
   const plot = useRef<uPlot | null>(null);
   const opts = useRef(options);
   opts.current = options;
+  const heightRef = useRef(height);
+  heightRef.current = height;
 
   useEffect(() => {
     const host = el.current!;
-    const o: uPlot.Options = { ...opts.current, width: host.clientWidth || 600, height, cursor: { ...(opts.current.cursor ?? {}), sync: sync ? { key: sync } : undefined } };
+    const o: uPlot.Options = { ...opts.current, width: host.clientWidth || 600, height: heightRef.current, cursor: { ...(opts.current.cursor ?? {}), sync: sync ? { key: sync } : undefined } };
     const u = new uPlot(o, data, host);
     plot.current = u;
     onReady?.(u);
-    const ro = new ResizeObserver(() => u.setSize({ width: host.clientWidth, height }));
+    const ro = new ResizeObserver(() => u.setSize({ width: host.clientWidth, height: heightRef.current }));
     ro.observe(host);
     return () => {
       ro.disconnect();
@@ -33,7 +35,11 @@ export function UPlot({ options, data, height = 160, sync, onReady, className }:
     };
     // the plot is rebuilt when its options object changes identity (callers memoise it)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, height, sync]);
+  }, [options, sync]);
+
+  useEffect(() => {
+    if (el.current && el.current.clientWidth > 0) plot.current?.setSize({ width: el.current.clientWidth, height });
+  }, [height]);
 
   useEffect(() => {
     plot.current?.setData(data);
@@ -42,4 +48,11 @@ export function UPlot({ options, data, height = 160, sync, onReady, className }:
   return <div ref={el} className={className} style={{ width: '100%' }} />;
 }
 
-export const axisStyle = { stroke: '#8892b8', grid: { stroke: '#222c52', width: 1 }, ticks: { stroke: '#222c52', width: 1 }, font: '11px "JetBrains Mono", monospace' };
+const css = (name: string, fallback: string) => (typeof document === 'undefined' ? fallback : getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback);
+/** Axis styling from the theme tokens, read when a plot is built (spread it into an axis spec). */
+export const axisStyle = {
+  get stroke() { return css('--muted', '#8b9099'); },
+  get grid() { return { stroke: css('--grid', '#1d2127'), width: 1 }; },
+  get ticks() { return { stroke: css('--grid', '#1d2127'), width: 1 }; },
+  font: '11px "JetBrains Mono", monospace',
+};

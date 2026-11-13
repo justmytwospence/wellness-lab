@@ -46,7 +46,7 @@ function useStable<T extends unknown[]>(next: T): T {
 export function TimeSeries({ x, series, bands, height = 180, yLabel, yRange, yFmt, ySplit, sync, testId }: TsProps) {
   const fmt = useRef(yFmt);
   fmt.current = yFmt;
-  const key = JSON.stringify([series.map((s) => [s.label, s.color, s.mode, s.width, s.dash, s.size]), bands, yLabel, yRange, ySplit, height]);
+  const key = JSON.stringify([series.map((s) => [s.label, s.color, s.mode, s.width, s.dash, s.size]), bands, yLabel, yRange, ySplit]);
   const options = useMemo<Omit<uPlot.Options, 'width' | 'height'>>(() => {
     const f = (v: number) => (fmt.current ? fmt.current(v) : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1));
     return {

@@ -107,7 +107,7 @@ export function LineChart({ x, lines, band, time = false, height = 170, hline, v
   const at = idx === null ? '' : xFmt ? xFmt(x[idx]!) : String(x[idx]);
   return (
     <div role="img" aria-label={ariaLabel} data-testid={testid ?? 'chart'} data-points={x.length}>
-      <UPlot options={options} data={data} height={height} sync={sync} />
+      <UPlot options={options} data={data} height={Math.max(40, height - 16)} sync={sync} />
       <div className="mono muted" style={{ fontSize: 11, minHeight: 16 }}>{read !== null && `${at}   ${read}`}</div>
     </div>
   );

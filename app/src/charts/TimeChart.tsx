@@ -97,7 +97,7 @@ export function TimeChart(p: TimeChartProps) {
   return (
     <div data-chart="ts" role="img" aria-label={p.label}>
       {p.readout && <div className="mono muted" style={{ fontSize: 12, minHeight: 18 }}>{idx !== null ? p.readout(idx) : (p.idle ?? 'Hover for the details')}</div>}
-      <UPlot options={options} data={data} height={p.height ?? 220} sync={p.sync} />
+      <UPlot options={options} data={data} height={(p.height ?? 220) - (p.readout ? 18 : 0)} sync={p.sync} />
     </div>
   );
 }

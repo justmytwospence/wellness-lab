@@ -1,34 +1,46 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
-import { Activity, BarChart3, BedDouble, Beaker, Brain, Calendar, Database, FlaskConical, GitCompare, Home, Inbox, LineChart, Moon, Radar, Search, Settings, Sun, Target, Terminal, Waves, BookOpen, HeartPulse } from 'lucide-react';
+import { Activity, Database, FlaskConical, HeartPulse, Home, Inbox, Moon, Settings } from 'lucide-react';
 
-export interface RouteDef { path: string; match: RegExp; name: string; icon: ComponentType<{ size?: number }>; key: string; view: LazyExoticComponent<ComponentType>; rail: boolean; mobile?: boolean }
+export type WsId = 'today' | 'sleep' | 'recovery' | 'training' | 'journal' | 'lab' | 'data' | 'settings';
+export interface Workspace { id: WsId; name: string; icon: ComponentType<{ size?: number }>; foot?: boolean }
+export const WORKSPACES: Workspace[] = [
+  { id: 'today', name: 'Today', icon: Home },
+  { id: 'sleep', name: 'Sleep', icon: Moon },
+  { id: 'recovery', name: 'Recovery', icon: HeartPulse },
+  { id: 'training', name: 'Training', icon: Activity },
+  { id: 'journal', name: 'Journal', icon: Inbox },
+  { id: 'lab', name: 'Lab', icon: FlaskConical },
+  { id: 'data', name: 'Data', icon: Database, foot: true },
+  { id: 'settings', name: 'Settings', icon: Settings, foot: true },
+];
 
-const r = (path: string, name: string, icon: RouteDef['icon'], key: string, view: RouteDef['view'], rail = true, mobile = false): RouteDef => ({
-  path, name, icon, key, view, rail, mobile, match: new RegExp('^' + path.replace(/:[a-z]+/g, '[^/]+') + '/?$'),
+export interface RouteDef { path: string; match: RegExp; name: string; key: string; ws: WsId; range: boolean; view: LazyExoticComponent<ComponentType> }
+
+const r = (path: string, name: string, key: string, ws: WsId, range: boolean, view: RouteDef['view']): RouteDef => ({
+  path, name, key, ws, range, view, match: new RegExp('^' + path.replace(/:[a-z]+/g, '[^/]+') + '/?$'),
 });
 
 export const ROUTES: RouteDef[] = [
-  r('/', 'Today', Home, 't', lazy(() => import('./views/Today')), true, true),
-  r('/night/:day', 'Night', Moon, 'n', lazy(() => import('./views/Night')), false),
-  r('/nights', 'Nights', BedDouble, 'r', lazy(() => import('./views/Nights')), true, true),
-  r('/typical', 'Typical', Waves, 'y', lazy(() => import('./views/Typical'))),
-  r('/trends', 'Trends', LineChart, 'd', lazy(() => import('./views/Trends')), true, true),
-  r('/hrv', 'HRV', HeartPulse, 'h', lazy(() => import('./views/Hrv'))),
-  r('/thresholds', 'Thresholds', Target, 'x', lazy(() => import('./views/Thresholds'))),
-  r('/beats', 'Beats', Activity, 'b', lazy(() => import('./views/Beats'))),
-  r('/circadian', 'Circadian', Sun, 'c', lazy(() => import('./views/Circadian'))),
-  r('/inbox', 'Inbox', Inbox, 'i', lazy(() => import('./views/Inbox')), true, true),
-  r('/events', 'Events', Calendar, 'e', lazy(() => import('./views/Events'))),
-  r('/compare', 'Compare', GitCompare, 'm', lazy(() => import('./views/Compare'))),
-  r('/bench', 'Bench', Beaker, 'k', lazy(() => import('./views/Bench'))),
-  r('/models', 'Models', Brain, 'o', lazy(() => import('./views/Models'))),
-  r('/garmin', 'Garmin', Radar, 'a', lazy(() => import('./views/Garmin'))),
-  r('/experiments', 'Experiments', FlaskConical, 'p', lazy(() => import('./views/Experiments'))),
-  r('/sql', 'SQL', Terminal, 's', lazy(() => import('./views/Sql'))),
-  r('/methods', 'Methods', BookOpen, 'f', lazy(() => import('./views/Methods'))),
-  r('/data', 'Data', Database, 'u', lazy(() => import('./views/Data'))),
-  r('/settings', 'Settings', Settings, ',', lazy(() => import('./views/Settings'))),
+  r('/', 'Today', 't', 'today', false, lazy(() => import('./views/Today'))),
+  r('/nights', 'Nights', 'r', 'sleep', true, lazy(() => import('./views/Nights'))),
+  r('/night/:day', 'Night', 'n', 'sleep', false, lazy(() => import('./views/Night'))),
+  r('/typical', 'Typical', 'y', 'sleep', true, lazy(() => import('./views/Typical'))),
+  r('/compare', 'Compare', 'm', 'sleep', true, lazy(() => import('./views/Compare'))),
+  r('/hrv', 'HRV', 'h', 'recovery', true, lazy(() => import('./views/Hrv'))),
+  r('/trends', 'Trends', 'd', 'recovery', true, lazy(() => import('./views/Trends'))),
+  r('/circadian', 'Circadian', 'c', 'recovery', true, lazy(() => import('./views/Circadian'))),
+  r('/models', 'Models', 'o', 'recovery', true, lazy(() => import('./views/Models'))),
+  r('/thresholds', 'Thresholds', 'x', 'training', false, lazy(() => import('./views/Thresholds'))),
+  r('/beats', 'Beats', 'b', 'training', false, lazy(() => import('./views/Beats'))),
+  r('/inbox', 'Inbox', 'i', 'journal', false, lazy(() => import('./views/Inbox'))),
+  r('/events', 'Events', 'e', 'journal', false, lazy(() => import('./views/Events'))),
+  r('/experiments', 'Experiments', 'p', 'journal', false, lazy(() => import('./views/Experiments'))),
+  r('/bench', 'Bench', 'k', 'lab', false, lazy(() => import('./views/Bench'))),
+  r('/garmin', 'Garmin', 'a', 'lab', false, lazy(() => import('./views/Garmin'))),
+  r('/sql', 'SQL', 's', 'lab', false, lazy(() => import('./views/Sql'))),
+  r('/methods', 'Methods', 'f', 'lab', false, lazy(() => import('./views/Methods'))),
+  r('/data', 'Data', 'u', 'data', false, lazy(() => import('./views/Data'))),
+  r('/settings', 'Settings', ',', 'settings', false, lazy(() => import('./views/Settings'))),
 ];
-void BarChart3; void Search;
 
 export const routeFor = (path: string) => ROUTES.find((x) => x.match.test(path));

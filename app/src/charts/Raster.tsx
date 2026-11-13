@@ -10,10 +10,12 @@ export interface RasterProps {
   onClick?(row: number, col: number): void;
   onSelect?(r0: number, r1: number): void;
   overlay?: React.ReactNode;
+  /** fill the container's height instead of rowPx per row */
+  fit?: boolean;
 }
 
 /** An engine-drawn RGBA raster (rows are nights, columns time bins), stretched to the container width. */
-export function Raster({ rgba, width, height, rowPx = 3, onHover, onClick, onSelect }: RasterProps) {
+export function Raster({ rgba, width, height, rowPx = 3, onHover, onClick, onSelect, fit }: RasterProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [drag, setDrag] = useState<[number, number] | null>(null);
   useEffect(() => {
@@ -27,10 +29,10 @@ export function Raster({ rgba, width, height, rowPx = 3, onHover, onClick, onSel
     return [Math.min(height - 1, Math.max(0, Math.floor(((e.clientY - r.top) / r.height) * height))), Math.min(width - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * width)))] as const;
   };
   return (
-    <div style={{ position: 'relative', width: '100%' }}>
+    <div style={{ position: 'relative', width: '100%', height: fit ? '100%' : undefined }}>
       <canvas
         ref={canvas}
-        style={{ width: '100%', height: height * rowPx, imageRendering: 'pixelated', display: 'block', cursor: 'crosshair' }}
+        style={{ width: '100%', height: fit ? '100%' : height * rowPx, imageRendering: fit ? 'auto' : 'pixelated', display: 'block', cursor: 'crosshair' }}
         onMouseMove={(e) => {
           const [r, c] = at(e);
           onHover?.(r, c);
@@ -50,7 +52,7 @@ export function Raster({ rgba, width, height, rowPx = 3, onHover, onClick, onSel
           onClick?.(r, c);
         }}
       />
-      {drag && <div style={{ position: 'absolute', left: 0, right: 0, top: Math.min(...drag) * rowPx, height: (Math.abs(drag[1] - drag[0]) + 1) * rowPx, background: '#7aa2ff40', border: '1px solid #7aa2ff', pointerEvents: 'none' }} />}
+      {drag && <div style={{ position: 'absolute', left: 0, right: 0, top: `${(Math.min(...drag) / height) * 100}%`, height: `${((Math.abs(drag[1] - drag[0]) + 1) / height) * 100}%`, background: '#7aa2ff40', border: '1px solid #7aa2ff', pointerEvents: 'none' }} />}
     </div>
   );
 }
