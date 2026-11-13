@@ -326,8 +326,9 @@ pub fn night_features(data: &Data, labels: &[Label], settings: &Settings) -> Tab
         if let Some(h) = hr {
             let (t, v, _) = window(h, onset, wake);
             hr_grid = minute_grid(t, v, onset, tib_min);
-            let cov =
-                hr_grid.iter().filter(|x| x.is_finite()).count() as f64 / tib_min.max(1) as f64;
+            // share of the expected samples at the watch's own spacing (overnight it often logs every 2 minutes)
+            let step = spacing_min(t).min(5.0);
+            let cov = (hr_grid.iter().filter(|x| x.is_finite()).count() as f64 * step / tib_min.max(1) as f64).min(1.0);
             set("hr_cov", i, cov);
             if cov >= 0.5 {
                 let m = mean(v);

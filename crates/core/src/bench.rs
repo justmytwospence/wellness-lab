@@ -61,7 +61,7 @@ pub struct Row {
     pub snr: f64,
 }
 
-/// Nights with no event near them, an easy day before, no change of time zone around them and a full heart-rate record.
+/// Nights with no event near them, an easy day before, no change of time zone around them and a near-full heart-rate record (60 % of the expected samples; real watches log 65-80 % of a night).
 pub fn quiet_nights(nights: &Table, labels: &[Label]) -> Vec<bool> {
     let days = nights.col("day");
     let class = nights.text("load_class");
@@ -77,7 +77,7 @@ pub fn quiet_nights(nights: &Table, labels: &[Label]) -> Vec<bool> {
                 && matches!(class[i].as_deref(), Some("rest") | Some("easy"))
                 && (i.saturating_sub(3)..=(i + 3).min(nights.n - 1))
                     .all(|k| tz[k] == 0.0 || tz[k].is_nan())
-                && cov[i] >= 0.8
+                && cov[i] >= 0.6
         })
         .collect()
 }
@@ -142,17 +142,20 @@ pub fn bench(
             n_quiet: qv.len(),
             mean: mean(&qv),
             sd_quiet: std(&qv, 1),
+            // not enough quiet pairs (or no odd/even split) reads as missing, never as a perfect 0
+            te: f64::NAN,
+            cv_pct: f64::NAN,
+            icc: f64::NAN,
+            split_half: f64::NAN,
             ..Default::default()
         };
-        let pairs: Vec<(f64, f64)> = (1..nights.n)
-            .filter(|&i| {
-                quiet[i]
-                    && quiet[i - 1]
-                    && days[i] - days[i - 1] == 1.0
-                    && col[i].is_finite()
-                    && col[i - 1].is_finite()
-            })
-            .map(|i| (col[i - 1], col[i]))
+        // successive quiet nights at most three days apart: strictly consecutive quiet nights are rare in real
+        // data (any event, hard day or time-zone change breaks the run), and the level barely drifts in three days
+        let qi: Vec<usize> = (0..nights.n).filter(|&i| quiet[i] && col[i].is_finite()).collect();
+        let pairs: Vec<(f64, f64)> = qi
+            .windows(2)
+            .filter(|w| days[w[1]] - days[w[0]] <= 3.0)
+            .map(|w| (col[w[0]], col[w[1]]))
             .collect();
         if pairs.len() >= 10 {
             let d: Vec<f64> = pairs.iter().map(|p| p.1 - p.0).collect();
