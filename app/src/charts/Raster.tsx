@@ -32,7 +32,7 @@ export function Raster({ rgba, width, height, rowPx = 3, onHover, onClick, onSel
     <div style={{ position: 'relative', width: '100%', height: fit ? '100%' : undefined }}>
       <canvas
         ref={canvas}
-        style={{ width: '100%', height: fit ? '100%' : height * rowPx, imageRendering: fit ? 'auto' : 'pixelated', display: 'block', cursor: 'crosshair' }}
+        style={{ width: '100%', height: fit ? '100%' : height * rowPx, imageRendering: 'pixelated', display: 'block', cursor: 'crosshair' }}
         onMouseMove={(e) => {
           const [r, c] = at(e);
           onHover?.(r, c);
