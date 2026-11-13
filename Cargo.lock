@@ -3010,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "wellness-lab-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libm",
  "serde",
@@ -3020,7 +3020,7 @@ dependencies = [
 
 [[package]]
 name = "wellness-lab-fit"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "fitparser",
  "serde",
@@ -3032,7 +3032,7 @@ dependencies = [
 
 [[package]]
 name = "wellness-lab-io"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -3049,7 +3049,7 @@ dependencies = [
 
 [[package]]
 name = "wellness-lab-py"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "numpy",
  "pyo3",
@@ -3061,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "wellness-lab-server"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",
@@ -3091,7 +3091,7 @@ dependencies = [
 
 [[package]]
 name = "wellness-lab-wasm"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
