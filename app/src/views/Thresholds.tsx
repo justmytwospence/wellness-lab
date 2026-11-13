@@ -8,7 +8,11 @@ import { col, finite, txt } from '../lib/util';
 import { Empty } from '../charts/small';
 import { Plot, type PlotCtx } from '../charts/Plot';
 import { TimeChart } from '../charts/TimeChart';
-import { ChartCard, Legend, Missing, NeedsLargerScreen, Select, Split, useNarrow, useNotes } from '../charts/lab';
+import { Legend, Missing, NeedsLargerScreen, Select, Split, useNarrow } from '../charts/lab';
+import { Panel } from '../ui/Panel';
+import { View } from '../ui/View';
+import { Segmented } from '../ui/Segmented';
+import { Fill, Stack } from '../ui/Fill';
 import { quantile, sortedFinite } from '../charts/loess';
 import { A1Note, DurabilityNote } from '../charts/notes';
 
@@ -16,6 +20,7 @@ const SPORTS: [string, string, string][] = [['run', 'Running', 'running'], ['ski
 const NEEDS_RR = 'beat-to-beat intervals (RR) from activities recorded with HRV logging';
 const MAX_ART = 0.05, MAX_REP = 0.3;
 const OLD = '#3a4d78';
+const abs = { position: 'absolute', inset: 0 } as const;
 
 interface Curve { hb: number[]; a1: number[]; n: number[]; line: (number | null)[]; vt1: number | null; vt2: number | null }
 interface Now { vt1: number | null; vt2: number | null; as_of: string | null; vt1_all: number | null; vt2_all: number | null; activities: number }
@@ -27,31 +32,26 @@ export default function Thresholds() {
   return <ThresholdsView />;
 }
 
+/** The toolbar, the optional stat strip and the notes around a Thresholds body. */
+function Frame({ sport, strip, children }: { sport: string; strip?: React.ReactNode; children: React.ReactNode }) {
+  const [, setSport] = useParam('sport', 'run');
+  return (
+    <View title="Thresholds" desc="Aerobic and anaerobic thresholds from DFA a1 during exercise." strip={strip}
+      tools={<Segmented role="radiogroup" label="Sport" value={sport} options={SPORTS.map(([k, t]) => [k, t] as [string, string])} onChange={setSport} />}>
+      <Split aside={<><A1Note /><DurabilityNote /></>}>{children}</Split>
+    </View>
+  );
+}
+
 function ThresholdsView() {
-  const [sport, setSport] = useParam('sport', 'run');
-  const notes = useNotes();
+  const [sport] = useParam('sport', 'run');
   const { data, loading, error } = useJob({ kind: 'dfa' as const });
   const r = data as unknown as A1Result | null;
   const label = SPORTS.find((s) => s[0] === sport)?.[2] ?? 'running';
-  const body = (() => {
-    if (error) return <div className="card err" role="alert">{error}</div>;
-    if (!r) return <Empty>{loading ? 'Computing DFA a1 for every recording (this can take a moment)...' : 'No data yet.'}</Empty>;
-    if (r.acts.n === 0) return <ChartCard title="DFA a1 against heart rate" method="dfa.a1" job={{ kind: 'dfa' }}><Missing needs={NEEDS_RR} /></ChartCard>;
-    return <Body r={r} sport={sport} label={label} />;
-  })();
-  return (
-    <div className="page">
-      <h1>Thresholds</h1>
-      <p className="muted">Aerobic and anaerobic thresholds from the fractal correlation of beat intervals (DFA a1) during exercise. Press <kbd>n</kbd> for the notes.</p>
-      <div className="controls">
-        <span className="muted">Sport</span>
-        <div className="pill-row" role="radiogroup" aria-label="Sport">
-          {SPORTS.map(([k, t]) => <button key={k} role="radio" aria-checked={sport === k} className={sport === k ? 'on' : ''} onClick={() => setSport(k)}>{t}</button>)}
-        </div>
-      </div>
-      <Split notes={notes} aside={<><A1Note /><DurabilityNote /></>}>{body}</Split>
-    </div>
-  );
+  if (error) return <Frame sport={sport}><div className="err" role="alert" style={{ padding: 20 }}>{error}</div></Frame>;
+  if (!r) return <Frame sport={sport}><Empty>{loading ? 'Computing DFA a1 for every recording (this can take a minute)\u2026' : 'No data yet.'}</Empty></Frame>;
+  if (r.acts.n === 0) return <Frame sport={sport}><div className="vgrid"><Panel title="DFA a1 against heart rate" method="dfa.a1" job={{ kind: 'dfa' }}><Missing needs={NEEDS_RR} /></Panel></div></Frame>;
+  return <Body r={r} sport={sport} label={label} />;
 }
 
 function Body({ r, sport, label }: { r: A1Result; sport: string; label: string }) {
@@ -110,15 +110,17 @@ function Body({ r, sport, label }: { r: A1Result; sport: string; label: string }
   }, [cloud]);
 
   if (!cloud) {
-    return <ChartCard title="DFA a1 against heart rate" method="dfa.a1" job={job}><Missing needs={`${label} recordings with beat intervals`} /></ChartCard>;
+    return <Frame sport={sport}><div className="vgrid"><Panel title="DFA a1 against heart rate" method="dfa.a1" job={job}><Missing needs={`${label} recordings with beat intervals`} /></Panel></div></Frame>;
   }
   const thr = [curve?.vt1, curve?.vt2].filter((v): v is number => finite(v));
   return (
-    <>
-      <Summary now={now} curve={curve} label={label} />
-      <ChartCard title={`DFA a1 against heart rate, every fresh ${label} window`} method="dfa.a1" job={job}
-        subtitle={`Dots: 2-minute windows from first hours (${cloud.n.toLocaleString('en')}, up to 12,000 drawn), older ones fainter. White: median per 2 bpm; amber: the line through the transition zone`}>
-        <Plot height={340} x={{ domain: [cloud.x0, cloud.x1], label: 'Heart rate (bpm)' }} y={{ domain: [0, 1.8], label: 'DFA a1', ticks: 6 }} draw={draw} label={`DFA a1 against heart rate for ${label}`}>
+    <Frame sport={sport} strip={now ? <Summary now={now} curve={curve} label={label} /> : undefined}>
+    <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)', gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr)' }}>
+      <Panel title={`DFA a1 against heart rate, every fresh ${label} window`} method="dfa.a1" job={job}
+        actions={<Legend items={[{ color: PAL.hrv, label: 'recent' }, { color: OLD, label: 'older' }, { color: PAL.hr, label: 'fitted line', line: true }, { color: PAL.alert, label: 'a1 0.75 and 0.5', line: true }]} />}
+        sub={`Dots: 2-minute windows from first hours (${cloud.n.toLocaleString('en')}, up to 12,000 drawn), older ones fainter. White: median per 2 bpm; amber: the line through the transition zone`}>
+        <Fill>{({ h }) => (
+        <Plot height={h} x={{ domain: [cloud.x0, cloud.x1], label: 'Heart rate (bpm)' }} y={{ domain: [0, 1.8], label: 'DFA a1', ticks: 6 }} draw={draw} label={`DFA a1 against heart rate for ${label}`}>
           {({ sx, sy, w }) => {
             const med = curve ? curve.hb.map((h, i) => [h, curve.a1[i]!] as [number, number]) : [];
             const fit = curve ? curve.hb.map((h, i) => [h, curve.line[i]] as [number, number | null]).filter((p): p is [number, number] => finite(p[1])) : [];
@@ -144,46 +146,42 @@ function Body({ r, sport, label }: { r: A1Result; sport: string; label: string }
             );
           }}
         </Plot>
-        <Legend items={[{ color: PAL.hrv, label: 'recent' }, { color: OLD, label: 'older' }, { color: PAL.hr, label: 'fitted line', line: true }, { color: PAL.alert, label: 'a1 0.75 and 0.5', line: true }]} />
-      </ChartCard>
+        )}</Fill>
+      </Panel>
 
-      <ChartCard title="Thresholds over time" method="dfa.a1" job={job} subtitle="Each point: all fresh windows of the six weeks before it">
+      <Panel title="Thresholds over time" method="dfa.a1" job={job} sub="Each point: all fresh windows of the six weeks before it"
+        actions={hist.days.length >= 2 && (hist.vt1.some(finite) || hist.vt2.some(finite)) ? <Legend items={[{ color: PAL.hrv, label: 'aerobic (a1 0.75)', line: true }, { color: PAL.alert, label: 'anaerobic (a1 0.5)', line: true }]} /> : undefined}>
         {hist.days.length < 2 ? <Missing needs={`at least 3 ${label} recordings in six weeks`} /> : !hist.vt1.some(finite) && !hist.vt2.some(finite) ? (
           <Empty>No threshold found: alpha-1 has to cross 0.75 or 0.5 within the six-week windows, which takes recordings that run from easy to hard effort.</Empty>
         ) : (
-          <>
-            <Legend items={[{ color: PAL.hrv, label: 'aerobic (a1 0.75)', line: true }, { color: PAL.alert, label: 'anaerobic (a1 0.5)', line: true }]} />
-            <TimeChart label={`Thresholds over time for ${label}`} days={hist.days} lines={histLines} height={190} yTitle="Heart rate (bpm)"
+          <Fill>{({ h }) => (
+            <TimeChart label={`Thresholds over time for ${label}`} days={hist.days} lines={histLines} height={h} yTitle="Heart rate (bpm)"
               readout={(i) => `six weeks to ${isoDay(hist.days[i]!)}  aerobic ${finite(hist.vt1[i]) ? hist.vt1[i]!.toFixed(0) : '-'} bpm  anaerobic ${finite(hist.vt2[i]) ? hist.vt2[i]!.toFixed(0) : '-'} bpm  (${hist.n[i]} recordings)`} />
-          </>
+          )}</Fill>
         )}
-      </ChartCard>
+      </Panel>
 
-      <ChartCard title="One recording, window by window" method="dfa.a1" job={job} subtitle="Faded points failed the artefact or device checks">
-        <div className="controls" style={{ marginTop: 0 }}>
-          <Select label="Recording" value={String(recId ?? '')} options={recs.map((a) => [String(a.act), `${isoDay(a.day)} \u00b7 ${a.name} \u00b7 ${a.minutes.toFixed(0)} min`] as [string, string])} onChange={(v) => setRec(v)} />
-        </div>
+      <Panel title="One recording, window by window" method="dfa.a1" job={job} sub="Faded points failed the artefact or device checks"
+        actions={<Select label="Recording" value={String(recId ?? '')} options={recs.map((a) => [String(a.act), `${isoDay(a.day)} \u00b7 ${a.name} \u00b7 ${a.minutes.toFixed(0)} min`] as [string, string])} onChange={(v) => setRec(v)} />}>
         {cur ? <Recording r={r} act={cur.act} now={now} /> : <Missing needs={`${label} recordings with beat intervals`} />}
-      </ChartCard>
+      </Panel>
 
       <Durability r={r} sport={sport} label={label} byAct={byAct} job={job} />
-    </>
+    </div>
+    </Frame>
   );
 }
 
-function Summary({ now, curve, label }: { now: Now | undefined; curve: Curve | undefined; label: string }) {
-  if (!now) return null;
+function Summary({ now, curve, label }: { now: Now; curve: Curve | undefined; label: string }) {
   const f = (v: number | null | undefined) => (finite(v) ? `${v!.toFixed(0)} bpm` : 'not found');
   return (
-    <section className="card" data-testid="thresholds-now">
-      <div className="row">
-        <b>{label[0]!.toUpperCase() + label.slice(1)}</b>
-        <span>aerobic threshold (a1 0.75): <b className="mono">{f(now.vt1)}</b></span>
-        <span>anaerobic (a1 0.5): <b className="mono">{f(now.vt2)}</b></span>
-        {now.as_of && <span className="muted">six weeks to {now.as_of}</span>}
-        <span className="muted">all fresh windows: {f(curve?.vt1)} and {f(curve?.vt2)}; {now.activities} recordings</span>
-      </div>
-    </section>
+    <div className="strip" data-testid="thresholds-now">
+      <div><span className="l">Sport</span>{label[0]!.toUpperCase() + label.slice(1)}</div>
+      <div><span className="l">aerobic threshold (a1 0.75)</span><b className="mono">{f(now.vt1)}</b></div>
+      <div><span className="l">anaerobic (a1 0.5)</span><b className="mono">{f(now.vt2)}</b></div>
+      {now.as_of && <div><span className="l">six weeks to</span>{now.as_of}</div>}
+      <div style={{ flex: 1, color: 'var(--muted)', font: '400 12px var(--font)' }}>all fresh windows: {f(curve?.vt1)} and {f(curve?.vt2)}; {now.activities} recordings</div>
+    </div>
   );
 }
 
@@ -203,7 +201,9 @@ function Recording({ r, act, now }: { r: A1Result; act: number; now: Now | undef
   return (
     <>
       <Legend items={[{ color: PAL.hrv, label: 'below VT1' }, { color: PAL.hr, label: 'between' }, { color: PAL.alert, label: 'above VT2' }]} />
-      <Plot height={200} margin={m} x={{ domain: [0, xmax], noGrid: true }} y={{ domain: [0, 1.8], clamp: true, label: 'DFA a1', ticks: 6 }} label="DFA a1 window by window for one recording">
+      <Stack weights={[0.6, 0.4]}>
+      <Fill style={abs}>{({ h }) => (
+      <Plot height={h} margin={m} x={{ domain: [0, xmax], noGrid: true }} y={{ domain: [0, 1.8], clamp: true, label: 'DFA a1', ticks: 6 }} label="DFA a1 window by window for one recording">
         {({ sx, sy }) => (
           <>
             {zones.map((z) => <rect key={z.y0} x={0} width={sx(xmax)} y={sy(z.y1)} height={sy(z.y0) - sy(z.y1)} fill={z.c} opacity={0.16} />)}
@@ -216,7 +216,9 @@ function Recording({ r, act, now }: { r: A1Result; act: number; now: Now | undef
           </>
         )}
       </Plot>
-      <Plot height={130} margin={m} x={{ domain: [0, xmax], label: 'Minutes into the recording' }} y={{ domain: [Math.min(...hrs) - 3, Math.max(...hrs) + 3], label: 'HR (bpm)' }} label="Heart rate for the same recording">
+      )}</Fill>
+      <Fill style={abs}>{({ h }) => (
+      <Plot height={h} margin={m} x={{ domain: [0, xmax], label: 'Minutes into the recording' }} y={{ domain: [Math.min(...hrs) - 3, Math.max(...hrs) + 3], label: 'HR (bpm)' }} label="Heart rate for the same recording">
         {({ sx, sy, w: pw }) => (
           <>
             {rules.map((v) => <line key={v} x1={0} x2={pw} y1={sy(v)} y2={sy(v)} stroke={PAL.muted} strokeDasharray="4 4" />)}
@@ -224,6 +226,8 @@ function Recording({ r, act, now }: { r: A1Result; act: number; now: Now | undef
           </>
         )}
       </Plot>
+      )}</Fill>
+      </Stack>
     </>
   );
 }
@@ -242,11 +246,12 @@ function Durability({ r, sport, label, byAct, job }: { r: A1Result; sport: strin
     return { per: [...per.entries()].map(([a, p]) => ({ act: a, pts: p.sort((x, y) => x[0] - y[0]) })), mean };
   }, [r.durability, sport]);
   const sub = 'Grey: each activity of 2 h or more; amber: their mean (blocks with 5 or more activities)';
-  if (!d.per.length) return <ChartCard title="a1 later in long activities" method="dfa.a1" job={job} subtitle={sub}><Empty>No long recordings for {label}: durability needs activities of two hours or more with beat intervals.</Empty></ChartCard>;
+  if (!d.per.length) return <Panel title="a1 later in long activities" method="dfa.a1" job={job} sub={sub}><Empty>No long recordings for {label}: durability needs activities of two hours or more with beat intervals.</Empty></Panel>;
   const xmax = Math.max(1, ...d.per.flatMap((p) => p.pts.map((q) => q[0]))) + 0.25;
   return (
-    <ChartCard title="a1 later in long activities" method="dfa.a1" job={job} subtitle={sub}>
-      <Plot height={230} x={{ domain: [0, xmax], label: 'Hours into the activity' }} y={{ domain: [-0.6, 0.6], clamp: true, label: 'a1 vs first hour, same HR' }} label="DFA a1 drift in long activities">
+    <Panel title="a1 later in long activities" method="dfa.a1" job={job} sub={sub}>
+      <Fill>{({ h }) => (
+      <Plot height={h} x={{ domain: [0, xmax], label: 'Hours into the activity' }} y={{ domain: [-0.6, 0.6], clamp: true, label: 'a1 vs first hour, same HR' }} label="DFA a1 drift in long activities">
         {({ sx, sy, w }) => {
           const ln = d3line<[number, number]>().x((p) => sx(p[0])).y((p) => sy(p[1]));
           return (
@@ -259,6 +264,7 @@ function Durability({ r, sport, label, byAct, job }: { r: A1Result; sport: strin
           );
         }}
       </Plot>
-    </ChartCard>
+      )}</Fill>
+    </Panel>
   );
 }

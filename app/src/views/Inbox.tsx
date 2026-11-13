@@ -7,6 +7,8 @@ import { Spark, Empty } from '../charts/small';
 import { LabelDialog } from '../layout/LabelDialog';
 import { useJob } from '../lib/useJob';
 import { col } from '../lib/util';
+import { View } from '../ui/View';
+import { Panel } from '../ui/Panel';
 
 function Evidence({ p }: { p: Proposal }) {
   const { data } = useJob({ kind: 'baseline', metric: 'hr_min30' });
@@ -67,63 +69,64 @@ export default function Inbox() {
   });
   const labels = state.labels.filter((l) => !l.deleted_at && (!kindFilter || l.kind === kindFilter)).sort((a, b) => b.start_day - a.start_day);
   const confirmed = state.proposals.filter((p) => p.status === 'confirmed').length, denied = state.proposals.filter((p) => p.status === 'denied').length;
+  const range = (l: { start_day: number; end_day: number }) => `${isoDay(l.start_day)}${l.end_day > l.start_day ? ` to ${isoDay(l.end_day)}` : ''}`;
   return (
-    <div className="page">
-      <h1>Inbox</h1>
-      <p className="muted">Things the app suspects from your nights. Confirm or deny, and it learns what your own illnesses and nights out look like. At most {state.settings.question_budget_per_week} questions a week.</p>
-      <div className="grid2" style={{ gridTemplateColumns: 'minmax(0, 1.5fr) minmax(300px, 1fr)' }}>
-        <div>
-          <h3>Asking</h3>
-          {open.length === 0 && <div className="card"><Empty>Nothing to ask right now.</Empty></div>}
-          {open.map((p, i) => (
-            <div key={p.id} className="card" data-testid="proposal" style={{ outline: i === cur ? `1px solid ${PAL.hrv}` : 'none' }} onClick={() => setCur(i)}>
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <h2 style={{ color: kindInfo(p.kind).color }}>{kindInfo(p.kind).name}? <span className="mono muted" style={{ fontSize: 13 }}>{isoDay(p.start_day)}{p.end_day > p.start_day ? ` to ${isoDay(p.end_day)}` : ''}</span></h2>
-                <span className="chip" style={{ background: PAL.base }}>{confidence(p.posterior[p.kind] ?? 0)}</span>
+    <>
+      <View title="Inbox" desc="Confirm or deny what the app suspects; it learns what your nights look like from your answers.">
+        <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)' }}>
+          <Panel title="Asking" sub={`At most ${state.settings.question_budget_per_week} questions a week`} scroll testid="inbox-asking">
+            {open.length === 0 && <Empty>Nothing to ask right now.</Empty>}
+            {open.map((p, i) => (
+              <div key={p.id} className={`item${i === cur ? ' cur' : ''}`} data-testid="proposal" onClick={() => setCur(i)}>
+                <div className="row" style={{ justifyContent: 'space-between' }}>
+                  <h2 style={{ color: kindInfo(p.kind).color }}>{kindInfo(p.kind).name}? <span className="mono muted" style={{ fontSize: 13 }}>{range(p)}</span></h2>
+                  <span className="chip" style={{ background: PAL.base }}>{confidence(p.posterior[p.kind] ?? 0)}</span>
+                </div>
+                <p>{why(p.evidence)}</p>
+                <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}><Evidence p={p} /><Posterior p={p} /></div>
+                <div className="row" style={{ marginTop: 10 }}>
+                  <button className="primary" onClick={() => void answer(p.id, 'confirm')}>Confirm (c)</button>
+                  <button onClick={() => void answer(p.id, 'deny')}>Deny (d)</button>
+                  <button onClick={() => void answer(p.id, 'unsure')}>Not sure (u)</button>
+                  <button onClick={() => void answer(p.id, 'snooze')}>Snooze 7 days (s)</button>
+                  <button onClick={() => setEdit(p)}>Edit (e)</button>
+                  <a href={`/night/${p.start_day}`} onClick={link(`/night/${p.start_day}`)}>Open night</a>
+                </div>
               </div>
-              <p>{why(p.evidence)}</p>
-              <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}><Evidence p={p} /><Posterior p={p} /></div>
-              <div className="row" style={{ marginTop: 10 }}>
-                <button className="primary" onClick={() => void answer(p.id, 'confirm')}>Confirm (c)</button>
-                <button onClick={() => void answer(p.id, 'deny')}>Deny (d)</button>
-                <button onClick={() => void answer(p.id, 'unsure')}>Not sure (u)</button>
-                <button onClick={() => void answer(p.id, 'snooze')}>Snooze 7 days (s)</button>
-                <button onClick={() => setEdit(p)}>Edit (e)</button>
-                <a href={`/night/${p.start_day}`} onClick={link(`/night/${p.start_day}`)}>Open night</a>
-              </div>
+            ))}
+            {inferred.length > 0 && (
+              <>
+                <h3 style={{ margin: '16px 0 4px' }}>Labelled automatically</h3>
+                <div>{inferred.map((l) => (
+                  <div key={l.id} className="row" style={{ padding: '3px 0' }}>
+                    <b style={{ color: kindInfo(l.kind).color }}>{kindInfo(l.kind).name}</b><span className="mono">{range(l)}</span>
+                    <span className="muted" style={{ flex: 1 }}>{l.note}</span><button onClick={() => void deleteLabel(l.id)}>Wrong, remove</button>
+                  </div>))}</div>
+              </>
+            )}
+            <details style={{ marginTop: 12 }}><summary>Answered ({answered.length})</summary>
+              <div>{answered.map((p) => <div key={p.id} className="row" style={{ padding: '3px 0' }}><span style={{ color: kindInfo(p.kind).color }}>{kindInfo(p.kind).name}</span><span className="mono">{isoDay(p.start_day)}</span><span className="muted">{p.status}</span></div>)}</div>
+            </details>
+            <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>Detector {state.proposals[0]?.model_version ?? 'classify-1'}: {confirmed} confirmed and {denied} denied episodes so far.</p>
+          </Panel>
+          <Panel title="Labels" scroll testid="inbox-labels" actions={<>
+            <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} aria-label="Filter labels"><option value="">All kinds</option>{LABEL_KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.name}</option>)}</select>
+            <button onClick={() => setLabelEdit({ start_day: app.lastDay, end_day: app.lastDay })}>New label</button>
+          </>}>
+            <div data-testid="labels">
+              {labels.length === 0 && <Empty>No labels yet.</Empty>}
+              {labels.map((l, i) => (
+                <div key={`${l.id}:${i}`} className="row" style={{ padding: '3px 0', borderBottom: `1px solid ${PAL.grid}` }}>
+                  <b style={{ color: kindInfo(l.kind).color }}>{kindInfo(l.kind).name}</b><span className="mono" style={{ fontSize: 12 }}>{range(l)}</span>
+                  <span className="muted" style={{ fontSize: 11 }}>{l.source}</span><span style={{ flex: 1 }} />
+                  <button onClick={() => setLabelEdit(l)}>Edit</button><button onClick={() => void deleteLabel(l.id)}>Delete</button>
+                </div>))}
             </div>
-          ))}
-          {inferred.length > 0 && (
-            <>
-              <h3>Labelled automatically</h3>
-              <div className="card">{inferred.map((l) => (
-                <div key={l.id} className="row" style={{ padding: '3px 0' }}>
-                  <b style={{ color: kindInfo(l.kind).color }}>{kindInfo(l.kind).name}</b><span className="mono">{isoDay(l.start_day)}{l.end_day > l.start_day ? ` to ${isoDay(l.end_day)}` : ''}</span>
-                  <span className="muted" style={{ flex: 1 }}>{l.note}</span><button onClick={() => void deleteLabel(l.id)}>Wrong, remove</button>
-                </div>))}</div>
-            </>
-          )}
-          <details><summary>Answered ({answered.length})</summary>
-            <div className="card">{answered.map((p) => <div key={p.id} className="row" style={{ padding: '3px 0' }}><span style={{ color: kindInfo(p.kind).color }}>{kindInfo(p.kind).name}</span><span className="mono">{isoDay(p.start_day)}</span><span className="muted">{p.status}</span></div>)}</div>
-          </details>
+          </Panel>
         </div>
-        <div>
-          <div className="row" style={{ justifyContent: 'space-between' }}><h3>Labels</h3><button onClick={() => setLabelEdit({ start_day: app.lastDay, end_day: app.lastDay })}>New label</button></div>
-          <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} aria-label="Filter labels"><option value="">All kinds</option>{LABEL_KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.name}</option>)}</select>
-          <div className="card" style={{ marginTop: 8 }} data-testid="labels">
-            {labels.length === 0 && <Empty>No labels yet.</Empty>}
-            {labels.map((l, i) => (
-              <div key={`${l.id}:${i}`} className="row" style={{ padding: '3px 0', borderBottom: `1px solid ${PAL.grid}` }}>
-                <b style={{ color: kindInfo(l.kind).color }}>{kindInfo(l.kind).name}</b><span className="mono" style={{ fontSize: 12 }}>{isoDay(l.start_day)}{l.end_day > l.start_day ? ` to ${isoDay(l.end_day)}` : ''}</span>
-                <span className="muted" style={{ fontSize: 11 }}>{l.source}</span><span style={{ flex: 1 }} />
-                <button onClick={() => setLabelEdit(l)}>Edit</button><button onClick={() => void deleteLabel(l.id)}>Delete</button>
-              </div>))}
-          </div>
-        </div>
-      </div>
-      <p className="muted" style={{ fontSize: 12 }}>Detector {state.proposals[0]?.model_version ?? 'classify-1'}: {confirmed} confirmed and {denied} denied episodes so far.</p>
+      </View>
       {edit && <LabelDialog proposalId={edit.id} initial={{ kind: edit.kind, start_day: edit.start_day, end_day: edit.end_day }} onClose={() => setEdit(null)} />}
       {labelEdit && <LabelDialog initial={labelEdit} onClose={() => setLabelEdit(null)} />}
-    </div>
+    </>
   );
 }

@@ -7,13 +7,18 @@ import { useNumParam, useParam } from '../lib/router';
 import { col, finite, txt } from '../lib/util';
 import { Empty } from '../charts/small';
 import { Plot, type PlotCtx } from '../charts/Plot';
-import { ChartCard, GOOD, Legend, Missing, NeedsLargerScreen, Select, Slider, Split, useNarrow, useNotes } from '../charts/lab';
+import { GOOD, Legend, Missing, NeedsLargerScreen, Select, Slider, Split, useNarrow } from '../charts/lab';
+import { Panel } from '../ui/Panel';
+import { View } from '../ui/View';
+import { Fill, Stack } from '../ui/Fill';
 import { quantile, sortedFinite } from '../charts/loess';
 import { CleaningNote, PoincareNote, RrNote, WindowNote, WorkedNote } from '../charts/notes';
 
 const NEEDS_RR = 'beat-to-beat intervals (RR) from activities recorded with HRV logging (at least 500 usable beats)';
 const STATUS = ['kept', 'artifact', 'out of range'] as const;
 const STATUS_COLORS = [PAL.hrv, PAL.alert, PAL.hr];
+const abs = { position: 'absolute', inset: 0 } as const;
+const DESC = 'One chest-strap recording, beat by beat.';
 
 interface Detail {
   id: string; counts: Record<string, number>; beats: Table; window_minute: number; window: Table; window_rmssd: number; session_rmssd: number; mean_hr: number;
@@ -28,7 +33,6 @@ export default function Beats() {
 }
 
 function BeatsView() {
-  const notes = useNotes();
   const [sid, setSid] = useParam('s', '');
   const [minute, setMinute] = useNumParam('min', -1);
   const sessions = useJob({ kind: 'sessions' as const });
@@ -44,28 +48,28 @@ function BeatsView() {
   const win = useJob(id && minute >= 0 ? { kind: 'beats' as const, id, window_min: minute } : null);
   const d = ((minute >= 0 ? win.data : null) ?? base.data) as unknown as Detail | null;
   const err = sessions.error ?? base.error ?? win.error;
+  const tmax = useMemo(() => { const t = d ? col(d.beats, 't') : []; return t.length ? t[t.length - 1]! : 0; }, [d]);
+  const maxMin = Math.max(Math.floor(tmax / 60) - 1, 0);
+
+  const tools = s && s.n > 0 && !sessions.error ? (
+    <>
+      <Select label="Recording (cleanest first)" value={id} options={list.map((x) => [x.id, x.label] as [string, string])} onChange={(v) => { setSid(v); setMinute(null); }} />
+      {d && !err && <Slider label="Window start (minute)" min={0} max={maxMin} step={1} value={minute >= 0 ? minute : d.window_minute} onCommit={(v) => setMinute(v)} fmt={(v) => String(v)} />}
+    </>
+  ) : undefined;
 
   const body = (() => {
-    if (sessions.error) return <div className="card err" role="alert">{sessions.error}</div>;
+    if (sessions.error) return <div className="err" role="alert" style={{ padding: 20 }}>{sessions.error}</div>;
     if (!s) return <Empty>{sessions.loading ? 'Looking for recordings with beat intervals...' : 'No data yet.'}</Empty>;
-    if (s.n === 0) return <ChartCard title="RR tachogram" method="beats.cleaning" job={{ kind: 'sessions' }}><Missing needs={NEEDS_RR} /></ChartCard>;
-    return (
-      <>
-        <div className="controls" style={{ margin: 0 }}>
-          <Select label="Recording (cleanest first)" value={id} options={list.map((x) => [x.id, x.label] as [string, string])} onChange={(v) => { setSid(v); setMinute(null); }} />
-        </div>
-        {err ? <div className="card err" role="alert">{err}</div> : !d ? <Empty>Cleaning the beat stream...</Empty> : <Session d={d} minute={minute} setMinute={setMinute} />}
-      </>
-    );
+    if (s.n === 0) return <div className="vgrid"><Panel title="RR tachogram" method="beats.cleaning" job={{ kind: 'sessions' }}><Missing needs={NEEDS_RR} /></Panel></div>;
+    return err ? <div className="err" role="alert" style={{ padding: 20 }}>{err}</div> : !d ? <Empty>Cleaning the beat stream...</Empty> : <Session d={d} />;
   })();
 
   const aside = d ? <BeatNotes d={d} /> : <RrNote />;
   return (
-    <div className="page">
-      <h1>Beats</h1>
-      <p className="muted">From the heartbeats of a chest-strap recording to RMSSD, the Poincare plot and the spectrum. Press <kbd>n</kbd> for the notes.</p>
-      <Split notes={notes} aside={aside}>{body}</Split>
-    </div>
+    <View title="Beats" desc={DESC} tools={tools}>
+      <Split aside={aside}>{body}</Split>
+    </View>
   );
 }
 
@@ -94,33 +98,28 @@ function BeatNotes({ d }: { d: Detail }) {
       <CleaningNote counts={d.counts} total={d.beats.n} rep={rep} />
       <WindowNote />
       <WorkedNote usable={ws.usable} meanSq={ws.meanSq} winRmssd={d.window_rmssd} sessionRmssd={d.session_rmssd} hr={d.mean_hr} />
+      <h2>Worked example</h2>
+      <p className="muted">The first beats of the window, the way you would work them by hand.</p>
+      <Worked w={d.window} />
       <PoincareNote />
     </>
   );
 }
 
-function Session({ d, minute, setMinute }: { d: Detail; minute: number; setMinute(v: number | null): void }) {
+function Session({ d }: { d: Detail }) {
   const jb = { kind: 'beats', id: d.id };
-  const tmax = useMemo(() => { const t = col(d.beats, 't'); return t.length ? t[t.length - 1]! : 0; }, [d.beats]);
-  const maxMin = Math.max(Math.floor(tmax / 60) - 1, 0);
   return (
-    <>
+    <div className="vgrid" style={{ gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1.25fr)' }}>
       <Tachogram d={d} job={jb} />
-      <ChartCard title="One minute, step by step" method="beats.rmssd" job={{ ...jb, window_min: d.window_minute }}
-        subtitle="The window opens on the most variable minute of the recording; slide it anywhere.">
-        <div className="controls" style={{ marginTop: 0 }}>
-          <Slider label="Window start (minute)" min={0} max={maxMin} step={1} value={minute >= 0 ? minute : d.window_minute} onCommit={(v) => setMinute(v)} fmt={(v) => String(v)} />
-        </div>
-        <Steps d={d} />
-      </ChartCard>
-      <ChartCard title="Worked example" method="beats.rmssd" job={{ ...jb, window_min: d.window_minute }} subtitle="The first beats of the window, the way you would work them by hand">
-        <Worked w={d.window} />
-      </ChartCard>
-      <div className="cols">
+      <div className="vgrid" style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr)' }}>
+        <Panel title="One minute, step by step" method="beats.rmssd" job={{ ...jb, window_min: d.window_minute }}
+          sub="The window opens on the most variable minute of the recording; slide it anywhere.">
+          <Steps d={d} />
+        </Panel>
         <PoincarePlot d={d} job={jb} />
         <SpectrumPlot d={d} job={jb} />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -154,10 +153,12 @@ function Tachogram({ d, job }: { d: Detail; job: unknown }) {
     c.globalAlpha = 1;
   }, [g, y0, y1]);
   return (
-    <ChartCard title="RR tachogram" method="beats.cleaning" job={job} subtitle="Every interval in the recording; flagged ones enlarged (pinned to the edge when off the scale)">
-      <Legend items={STATUS.map((s, i) => ({ label: s, color: STATUS_COLORS[i]! }))} />
-      <Plot height={270} x={{ domain: [0, g.tmax], label: 'Minutes into the recording' }} y={{ domain: [y0, y1], clamp: true, label: 'RR interval (ms)' }} draw={draw} label="RR tachogram colored by cleaning status" />
-    </ChartCard>
+    <Panel title="RR tachogram" method="beats.cleaning" job={job} sub="Every interval in the recording; flagged ones enlarged (pinned to the edge when off the scale)"
+      actions={<Legend items={STATUS.map((s, i) => ({ label: s, color: STATUS_COLORS[i]! }))} />}>
+      <Fill>{({ h }) => (
+      <Plot height={h} x={{ domain: [0, g.tmax], label: 'Minutes into the recording' }} y={{ domain: [y0, y1], clamp: true, label: 'RR interval (ms)' }} draw={draw} label="RR tachogram colored by cleaning status" />
+      )}</Fill>
+    </Panel>
   );
 }
 
@@ -175,11 +176,16 @@ function Steps({ d }: { d: Detail }) {
   const dm = Math.max(5, ...ok.map((p) => Math.abs(p.d))) * 1.1;
   const d2m = Math.max(10, ...ok.map((p) => p.d2), meanSq) * 1.1;
   const x = { domain: [0, 60] as [number, number] };
-  const heading = (t: string, s: string) => <div style={{ margin: '6px 0 0' }}><b style={{ fontSize: 13 }}>{t}</b> <span className="muted" style={{ fontSize: 12 }}>{s}</span></div>;
+  const slot = (t: string, s: string, plot: (h: number) => React.ReactNode) => (
+    <div style={{ ...abs, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s}><b style={{ fontSize: 13 }}>{t}</b> <span className="muted" style={{ fontSize: 12 }}>{s}</span></div>
+      <Fill>{({ h }) => plot(h)}</Fill>
+    </div>
+  );
   return (
-    <>
-      {heading('1. RR intervals', 'Rising and falling with each breath (respiratory sinus arrhythmia)')}
-      <Plot height={150} x={x} y={{ domain: [Math.min(...rrs) - 10, Math.max(...rrs) + 10], label: 'RR (ms)' }} label="RR intervals in the window">
+    <Stack>
+      {slot('1. RR intervals', 'Rising and falling with each breath (respiratory sinus arrhythmia)', (h) => (
+      <Plot height={h} x={x} y={{ domain: [Math.min(...rrs) - 10, Math.max(...rrs) + 10], label: 'RR (ms)' }} label="RR intervals in the window">
         {({ sx, sy }) => (
           <>
             <path d={d3line<(typeof w)[number]>().x((p) => sx(p.sec)).y((p) => sy(p.rr))(w.filter((p) => finite(p.rr))) ?? ''} fill="none" stroke={PAL.hrv} strokeWidth={1.6} />
@@ -187,12 +193,14 @@ function Steps({ d }: { d: Detail }) {
           </>
         )}
       </Plot>
-      {heading('2. Successive differences', 'Green: next beat slower; orange: next beat faster')}
-      <Plot height={130} x={x} y={{ domain: [-dm, dm], label: 'diff (ms)' }} label="Successive differences in the window">
+      ))}
+      {slot('2. Successive differences', 'Green: next beat slower; orange: next beat faster', (h) => (
+      <Plot height={h} x={x} y={{ domain: [-dm, dm], label: 'diff (ms)' }} label="Successive differences in the window">
         {({ sx, sy }) => ok.map((p) => <rect key={p.beat} x={sx(p.sec) - 1.5} width={3} y={Math.min(sy(0), sy(p.d))} height={Math.abs(sy(p.d) - sy(0))} fill={p.d > 0 ? GOOD : PAL.hr}><title>{`beat ${p.beat}: ${p.d >= 0 ? '+' : ''}${p.d.toFixed(0)} ms`}</title></rect>)}
       </Plot>
-      {heading('3. Squared differences', `Dashed line: their mean, ${Math.round(meanSq).toLocaleString('en')} ms\u00b2; its square root is RMSSD = ${finite(d.window_rmssd) ? d.window_rmssd.toFixed(1) : '-'} ms`)}
-      <Plot height={130} x={{ ...x, label: 'Seconds into the window' }} y={{ domain: [0, d2m], label: 'Squared (ms\u00b2)' }} label="Squared differences in the window">
+      ))}
+      {slot('3. Squared differences', `Dashed line: their mean, ${Math.round(meanSq).toLocaleString('en')} ms\u00b2; its square root is RMSSD = ${finite(d.window_rmssd) ? d.window_rmssd.toFixed(1) : '-'} ms`, (h) => (
+      <Plot height={h} x={{ ...x, label: 'Seconds into the window' }} y={{ domain: [0, d2m], label: 'Squared (ms\u00b2)' }} label="Squared differences in the window">
         {({ sx, sy, w: pw }) => (
           <>
             {ok.map((p) => <rect key={p.beat} x={sx(p.sec) - 1.5} width={3} y={sy(p.d2)} height={sy(0) - sy(p.d2)} fill={PAL.violet}><title>{`beat ${p.beat}: ${Math.round(p.d2).toLocaleString('en')} ms\u00b2`}</title></rect>)}
@@ -200,7 +208,8 @@ function Steps({ d }: { d: Detail }) {
           </>
         )}
       </Plot>
-    </>
+      ))}
+    </Stack>
   );
 }
 
@@ -234,12 +243,13 @@ function PoincarePlot({ d, job }: { d: Detail; job: unknown }) {
     c.fill();
     c.globalAlpha = 1;
   }, [x, y]);
-  if (!x.length || !(dom[1] > dom[0])) return <ChartCard title="Poincare plot" method="beats.rmssd" job={job}><Missing needs="at least two consecutive kept beats" /></ChartCard>;
+  if (!x.length || !(dom[1] > dom[0])) return <Panel title="Poincare plot" method="beats.rmssd" job={job}><Missing needs="at least two consecutive kept beats" /></Panel>;
   const mx = x.reduce((s, v) => s + v, 0) / x.length, my = y.reduce((s, v) => s + v, 0) / y.length;
   const k = Math.SQRT1_2;
   return (
-    <ChartCard title="Poincare plot" method="beats.rmssd" job={job} subtitle={`SD1 ${sd1.toFixed(1)} ms (RMSSD / root 2), SD2 ${sd2.toFixed(1)} ms`}>
-      <Plot height={320} x={{ domain: dom, label: 'RR(i) (ms)' }} y={{ domain: dom, label: 'RR(i+1) (ms)' }} draw={draw} label="Poincare plot of successive intervals">
+    <Panel title="Poincare plot" method="beats.rmssd" job={job} sub={`SD1 ${sd1.toFixed(1)} ms (RMSSD / root 2), SD2 ${sd2.toFixed(1)} ms`}>
+      <Fill>{({ h }) => (
+      <Plot height={h} x={{ domain: dom, label: 'RR(i) (ms)' }} y={{ domain: dom, label: 'RR(i+1) (ms)' }} draw={draw} label="Poincare plot of successive intervals">
         {({ sx, sy }) => (
           <>
             <line x1={sx(dom[0])} y1={sy(dom[0])} x2={sx(dom[1])} y2={sy(dom[1])} stroke={PAL.muted} strokeDasharray="4 3" />
@@ -250,7 +260,8 @@ function PoincarePlot({ d, job }: { d: Detail; job: unknown }) {
           </>
         )}
       </Plot>
-    </ChartCard>
+      )}</Fill>
+    </Panel>
   );
 }
 
@@ -258,13 +269,14 @@ const BANDS = [{ k: 'VLF', hi: 0.04, c: PAL.muted }, { k: 'LF', hi: 0.15, c: PAL
 
 function SpectrumPlot({ d, job }: { d: Detail; job: unknown }) {
   const { f, p, vlf, lf, hf, lf_hf } = d.spectrum;
-  if (!f.length || !p.some((v) => v > 1e-4)) return <ChartCard title="Spectrum of the recording" method="beats.spectrum" job={job}><Missing needs="at least 5 minutes of beats (more than 100 kept beats per segment)" /></ChartCard>;
+  if (!f.length || !p.some((v) => v > 1e-4)) return <Panel title="Spectrum of the recording" method="beats.spectrum" job={job}><Missing needs="at least 5 minutes of beats (more than 100 kept beats per segment)" /></Panel>;
   const total = vlf + lf + hf || 1;
   const rows: [string, string, number][] = [['VLF', '0 to 0.04 Hz', vlf], ['LF', '0.04 to 0.15 Hz', lf], ['HF', '0.15 to 0.4 Hz', hf]];
   return (
-    <ChartCard title="Spectrum of the recording" method="beats.spectrum" job={job} subtitle="Lomb-Scargle periodogram, averaged over half-overlapping 5-minute segments">
+    <Panel title="Spectrum of the recording" method="beats.spectrum" job={job} sub="Lomb-Scargle periodogram, averaged over half-overlapping 5-minute segments">
       <Legend items={BANDS.map((b) => ({ label: b.k, color: b.c }))} />
-      <Plot height={250} x={{ domain: [0, 0.6], label: 'Frequency (Hz)' }} y={{ domain: [1e-4, 1], scale: 'log', label: 'Relative power (log)', ticks: [1e-4, 1e-3, 1e-2, 1e-1, 1].map((v) => ({ v, label: v === 1 ? '1' : v.toExponential(0).replace('e-', 'e\u2212') })) }} label="Spectrum with VLF, LF and HF bands">
+      <Fill>{({ h }) => (
+      <Plot height={h} x={{ domain: [0, 0.6], label: 'Frequency (Hz)' }} y={{ domain: [1e-4, 1], scale: 'log', label: 'Relative power (log)', ticks: [1e-4, 1e-3, 1e-2, 1e-1, 1].map((v) => ({ v, label: v === 1 ? '1' : v.toExponential(0).replace('e-', 'e\u2212') })) }} label="Spectrum with VLF, LF and HF bands">
         {({ sx, sy }) => {
           let lo = 0;
           return BANDS.map((b) => {
@@ -276,13 +288,14 @@ function SpectrumPlot({ d, job }: { d: Detail; job: unknown }) {
           });
         }}
       </Plot>
-      <table className="t" aria-label="Band power" style={{ marginTop: 8 }}>
+      )}</Fill>
+      <table className="t" aria-label="Band power" style={{ marginTop: 8, flex: '0 0 auto' }}>
         <thead><tr><th>Band</th><th>Range</th><th className="n">Power (ms&sup2;)</th><th className="n">Share</th></tr></thead>
         <tbody>
           {rows.map(([k, r, v]) => <tr key={k}><td>{k}</td><td className="muted">{r}</td><td className="n">{finite(v) ? v.toFixed(0) : ''}</td><td className="n">{finite(v) ? `${((v / total) * 100).toFixed(0)}%` : ''}</td></tr>)}
           <tr><td>LF / HF</td><td /><td className="n">{finite(lf_hf) ? lf_hf.toFixed(2) : ''}</td><td /></tr>
         </tbody>
       </table>
-    </ChartCard>
+    </Panel>
   );
 }

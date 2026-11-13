@@ -7,6 +7,7 @@ import { useParam } from '../lib/router';
 import { QuantileDots, invNormal } from '../charts/analysis/dots';
 import { Card, Desktop, Intro, JobNote, NotAvailable } from '../charts/analysis/frame';
 import { METRICS, fmt, metricLabel, missingInput } from '../charts/analysis/inputs';
+import { View } from '../ui/View';
 
 interface Slot { day: number; arm: 'A' | 'B'; washout: boolean }
 interface Result1 { n_a: number; n_b: number; effect: number | null; se: number | null; p_pos: number | null; p_gt_swc: number | null; p_lt_neg_swc: number | null; p_within_swc: number | null; status: string; swc: number | null }
@@ -80,7 +81,7 @@ function Result({ def }: { def: ExperimentDef }) {
   const lastDay = nights ? Math.max(...(nights.num.day ?? [0]).map((d) => d ?? 0)) : 0;
   const waiting = a ? a.schedule.filter((s) => !s.washout && s.day > lastDay).length : 0;
   return (
-    <Card title={`Result: ${def.name}`} method="experiments.n_of_1" job={job} testid="card-result"
+    <Card title={`Result: ${def.name}`} method="experiments.n_of_1" job={job} testid="card-result" scroll
       actions={<div className="row" role="radiogroup" aria-label="Analysis"><label><input type="radio" checked={mode === 'itt'} onChange={() => setMode('itt')} /> as planned (ITT)</label><label><input type="radio" checked={mode === 'pp'} onChange={() => setMode('pp')} /> as followed (per protocol)</label></div>}>
       <JobNote loading={loading} error={error} />
       {r && (
@@ -134,7 +135,7 @@ function Wizard({ onDone }: { onDone(id: string): void }) {
   const sched = (preview.data as unknown as Analysis | null)?.schedule ?? [];
   const num = (v: string, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(+v) || lo));
   return (
-    <Card title="New experiment" method="experiments.n_of_1" testid="wizard">
+    <Card title="New experiment" method="experiments.n_of_1" testid="wizard" scroll>
       <p className="muted" style={{ fontSize: 12 }}>Alternate blocks of the change (A) and as usual (B), in random order within each block, and compare the outcome. The first nights of each period are a washout and are not analysed.</p>
       <div className="row" style={{ alignItems: 'flex-end', gap: 14 }}>
         <label>Name <input value={name} onChange={(e) => setName(e.target.value)} aria-label="Experiment name" style={{ width: 220 }} /></label>
@@ -175,41 +176,45 @@ function Body() {
   const slots = (sched.data as unknown as Analysis | null)?.schedule ?? [];
   const missing = sel ? missingInput(nights, sel.outcome) : null;
   const describe = (e: ExperimentDef) => (LABEL_KINDS.some((k) => k.kind === e.intervention) ? kindInfo(e.intervention as never).name : e.intervention);
+  const scheduleCard = sel && !missing && (
+    <Card title={`Schedule: ${sel.name}`} method="experiments.n_of_1" job={job} testid="card-schedule" scroll>
+      <JobNote loading={sched.loading} error={sched.error} />
+      {slots.length > 0 ? <Schedule slots={slots} adherence={{ ...(state.adherence[sel.id] ?? {}), ...Object.fromEntries(Object.entries(optimistic).filter(([k]) => k.startsWith(`${sel.id}:`)).map(([k, v]) => [Number(k.split(':')[1]), v])) }} onToggle={(d, v) => { const key = `${sel.id}:${d}`; setOptimistic((o) => ({ ...o, [key]: v })); void app.setAdherence(sel.id, d, v).finally(() => setOptimistic((o) => { const n = { ...o }; delete n[key]; return n; })); }} today={app.today} /> : <p className="muted">Planning...</p>}
+    </Card>
+  );
   return (
-    <div className="page">
-      <h1>Experiments</h1>
+    <View title="Experiments" desc="A/B experiments on yourself, planned in blocks.">
       <Intro>Test one change on yourself: alternate blocks with and without it, and let the numbers say whether it moved your sleep. Each experiment is planned here, you tick off the nights you followed the plan, and the result updates as nights arrive.</Intro>
-      <Card title="Your experiments" actions={<button className="primary" onClick={() => setOpen(!open)}>{open ? 'Close' : 'New experiment'}</button>} testid="experiment-list">
-        {state.experiments.length === 0 ? <p className="muted" data-testid="no-experiments">No experiments yet.</p> : (
-          <table className="t">
-            <thead><tr><th>Name</th><th>Change</th><th>Outcome</th><th>Plan</th><th /></tr></thead>
-            <tbody>
-              {state.experiments.map((e) => (
-                <tr key={e.id} data-testid="experiment-row" style={{ background: sel?.id === e.id ? 'var(--panel2)' : undefined }}>
-                  <td><button style={{ all: 'unset', cursor: 'pointer', color: PAL.base }} onClick={() => setExp(e.id)}>{e.name}</button></td>
-                  <td>{describe(e)}</td>
-                  <td>{metricLabel(e.outcome)}</td>
-                  <td className="muted">{e.blocks} blocks of 2 x {e.period_nights} nights from {isoDay(e.start_day)}</td>
-                  <td><button className="danger" onClick={() => { void app.deleteExperiment(e.id); }} aria-label={`Delete ${e.name}`}>Delete</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
-      {open && <Wizard onDone={(id) => { setExp(id); setOpen(false); }} />}
-      {sel && (
-        missing ? <Card title={sel.name}><NotAvailable input={missing} /></Card> : (
-          <>
-            <Card title={`Schedule: ${sel.name}`} method="experiments.n_of_1" job={job} testid="card-schedule">
-              <JobNote loading={sched.loading} error={sched.error} />
-              {slots.length > 0 ? <Schedule slots={slots} adherence={{ ...(state.adherence[sel.id] ?? {}), ...Object.fromEntries(Object.entries(optimistic).filter(([k]) => k.startsWith(`${sel.id}:`)).map(([k, v]) => [Number(k.split(':')[1]), v])) }} onToggle={(d, v) => { const key = `${sel.id}:${d}`; setOptimistic((o) => ({ ...o, [key]: v })); void app.setAdherence(sel.id, d, v).finally(() => setOptimistic((o) => { const n = { ...o }; delete n[key]; return n; })); }} today={app.today} /> : <p className="muted">Planning...</p>}
-            </Card>
-            <Result def={sel} />
-          </>
-        )
-      )}
-    </div>
+      <div className="vgrid" style={{ gridTemplateColumns: '340px minmax(0, 1fr)' }}>
+        <Card title="Your experiments" actions={<button className="primary" onClick={() => setOpen(!open)}>{open ? 'Close' : 'New experiment'}</button>} testid="experiment-list" scroll>
+          {state.experiments.length === 0 ? <p className="muted" data-testid="no-experiments">No experiments yet.</p> : (
+            <table className="t">
+              <thead><tr><th>Name</th><th>Change</th><th>Outcome</th><th>Plan</th><th /></tr></thead>
+              <tbody>
+                {state.experiments.map((e) => (
+                  <tr key={e.id} data-testid="experiment-row" style={{ background: sel?.id === e.id ? 'var(--panel2)' : undefined }}>
+                    <td><button style={{ all: 'unset', cursor: 'pointer', color: PAL.base }} onClick={() => setExp(e.id)}>{e.name}</button></td>
+                    <td>{describe(e)}</td>
+                    <td>{metricLabel(e.outcome)}</td>
+                    <td className="muted">{e.blocks} blocks of 2 x {e.period_nights} nights from {isoDay(e.start_day)}</td>
+                    <td><button className="danger" onClick={() => { void app.deleteExperiment(e.id); }} aria-label={`Delete ${e.name}`}>Delete</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+        {open ? <Wizard onDone={(id) => { setExp(id); setOpen(false); }} />
+          : !sel ? <div className="empty" style={{ background: 'var(--bg)', alignSelf: 'center' }}>Choose an experiment or start a new one.</div>
+          : missing ? <Card title={sel.name}><NotAvailable input={missing} /></Card>
+          : (
+            <div className="vgrid" style={{ height: 'auto', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' }}>
+              {scheduleCard}
+              <Result def={sel} />
+            </div>
+          )}
+      </div>
+    </View>
   );
 }
 
