@@ -44,10 +44,31 @@ export function TimeChart(p: TimeChartProps) {
     ];
     if (p.dots) series.push({ paths: () => null, points: { show: false }, stroke: 'transparent' });
     return {
-      scales: { x: { time: true }, y: p.log ? { distr: 3, log: 10 } : {} },
+      scales: {
+        x: { time: true },
+        // fit the data: uPlot's own log range snaps to whole decades (50 to 1,000 for nightly HRV)
+        y: p.log
+          ? { distr: 3, log: 10, range: (_u: uPlot, min: number, max: number): [number, number] => (min > 0 && max > 0 ? [min / 1.08, max * 1.08] : [1, 10]) }
+          : { range: (_u: uPlot, min: number, max: number): [number, number] => { const pad = max > min ? (max - min) * 0.06 : Math.max(Math.abs(max) * 0.05, 0.5); return [min - pad, max + pad]; } },
+      },
       series,
       bands: p.bands?.map((b) => ({ series: [b.b + 1, b.a + 1] as [number, number], fill: b.fill })),
-      axes: [{ ...axisStyle }, { ...axisStyle, size: 56, label: p.yTitle, labelSize: 14, labelFont: axisStyle.font }],
+      axes: [
+        { ...axisStyle },
+        {
+          ...axisStyle, size: 56, label: p.yTitle, labelSize: 14, labelFont: axisStyle.font,
+          ...(p.log ? {
+            // round numbers inside the fitted range, at most about seven of them
+            splits: (_u: uPlot, _i: number, min: number, max: number) => {
+              const nice = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9].flatMap((m) => [1, 10, 100, 1000].map((e) => m * e)).sort((a, b) => a - b);
+              let s = nice.filter((v) => v >= min && v <= max);
+              while (s.length > 7) s = s.filter((_, k) => k % 2 === 0);
+              return s;
+            },
+            values: (_u: uPlot, v: (number | null)[]) => v.map((x) => (x === null || x === undefined ? '' : x >= 10 ? x.toFixed(0) : String(+x.toFixed(1)))),
+          } : {}),
+        },
+      ],
       legend: { show: false },
       cursor: { points: { show: false }, drag: { x: false, y: false, setScale: false } },
       tzDate: (ts: number) => uPlot.tzDate(new Date(ts * 1000), 'UTC'),

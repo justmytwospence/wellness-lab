@@ -94,7 +94,22 @@ export function LineChart({ x, lines, band, time = false, height = 170, hline, v
       series,
       bands,
       legend: { show: false },
-      scales: { x: { time }, ...(bars ? { y: { range: (_u: uPlot, _min: number, max: number): [number, number] => [0, Math.max(1, max) * 1.15] } } : {}) },
+      scales: {
+        x: { time },
+        y: bars
+          ? { range: (_u: uPlot, _min: number, max: number): [number, number] => [0, Math.max(1, max) * 1.15] }
+          : {
+              // fit the lines, not a band that may be wide where a filter has not settled yet
+              range: (_u: uPlot, min: number, max: number): [number, number] => {
+                const v = lines.flatMap((l) => l.y.filter((x): x is number => x !== null && Number.isFinite(x)));
+                if (hline !== null && hline !== undefined) v.push(hline);
+                let lo = v.length ? Math.min(...v) : min, hi = v.length ? Math.max(...v) : max;
+                if (!(hi > lo)) { lo -= 0.5; hi += 0.5; }
+                const pad = (hi - lo) * 0.08;
+                return [lo - pad, hi + pad];
+              },
+            },
+      },
       ...(time ? { tzDate: (ts: number) => uPlot.tzDate(new Date(ts * 1e3), 'UTC') } : {}),
       axes: [
         { ...axisStyle, size: 30, ...(time ? {} : { incrs: [1, 2, 5, 10, 20, 50, 100, 200, 500], ...(xFmt ? { values: (_u: uPlot, v: number[]) => v.map(xFmt) } : {}) }) },
