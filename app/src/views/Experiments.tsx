@@ -205,7 +205,7 @@ function Body() {
           )}
         </Card>
         {open ? <Wizard onDone={(id) => { setExp(id); setOpen(false); }} />
-          : !sel ? <div className="empty" style={{ background: 'var(--bg)', alignSelf: 'center' }}>Choose an experiment or start a new one.</div>
+          : !sel ? <div className="panel" style={{ justifyContent: 'center' }}><div className="empty">Choose an experiment or start a new one.</div></div>
           : missing ? <Card title={sel.name}><NotAvailable input={missing} /></Card>
           : (
             <div className="vgrid" style={{ height: 'auto', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' }}>

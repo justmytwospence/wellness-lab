@@ -92,7 +92,8 @@ function Body() {
     for (const l of live) m.set(l.kind, (m.get(l.kind) ?? 0) + 1);
     return m;
   }, [live]);
-  const best = (counts.get('illness') ? 'illness' : [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'illness') as LabelKind;
+  // illness when there are a few, otherwise the kind with the most labels
+  const best = ((counts.get('illness') ?? 0) >= 3 ? 'illness' : [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'illness') as LabelKind;
   const [kindP, setKind] = useParam('kind', '');
   const kind = (LABEL_KINDS.some((k) => k.kind === kindP) ? kindP : best) as LabelKind;
   const [idsP, setIds] = useParam('ids', '');

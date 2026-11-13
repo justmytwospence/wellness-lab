@@ -35,7 +35,13 @@ function Bars({ children }: { children(width: number): ReactNode }) {
   return <div ref={ref} style={{ width: '100%' }}>{w > 0 && children(Math.min(440, w))}</div>;
 }
 
-function Residuals({ dfm, range }: { dfm: Dfm; range: [number, number] }) {
+/** The container's full width, for content that spreads over it. */
+function Wide({ children }: { children(width: number): ReactNode }) {
+  const [ref, { w }] = useSize<HTMLDivElement>();
+  return <div ref={ref} style={{ width: '100%' }}>{w > 0 && children(w)}</div>;
+}
+
+function Residuals({ dfm, range, width }: { dfm: Dfm; range: [number, number]; width: number }) {
   const { state } = useApp();
   const fit = dfm.fit!, days = dfm.days!;
   const idx = useMemo(() => days.map((d, i) => (d >= range[0] && d <= range[1] ? i : -1)).filter((i) => i >= 0), [days, range]);
@@ -43,7 +49,8 @@ function Residuals({ dfm, range }: { dfm: Dfm; range: [number, number] }) {
   // a night is faded where fewer than 14 nights with a value came before it in the baseline window
   const thin = useMemo(() => dfm.signals.map((_, s) => idx.map((i) => { let n = 0; for (let k = Math.max(0, i - win); k < i; k++) if (fit.resid_z[s]?.[k] != null && Number.isFinite(fit.resid_z[s]![k]!)) n++; return n < 14; })), [dfm.signals, idx, fit, win]);
   const ticks = useMemo(() => idx.map((i, c) => ({ i: c, d: isoDay(days[i]!) })).filter((t, c, a) => c === 0 || t.d.slice(0, 7) !== a[c - 1]!.d.slice(0, 7)).map((t) => ({ i: t.i, text: t.d.slice(0, 7) })), [idx, days]);
-  const cw = Math.max(2, Math.min(14, Math.floor(900 / Math.max(1, idx.length))));
+  // the cells share the panel's width (fractional widths are fine in SVG)
+  const cw = Math.max(1, Math.min(14, (width - 190 - 4) / Math.max(1, idx.length)));
   return (
     <Heatgrid
       rows={dfm.signals.map(metricLabel)} cols={idx.length} cw={cw} ch={22} rowLabelW={190}
@@ -100,7 +107,7 @@ function Body() {
       </Card>
       <Card title="Residuals: what the factor does not explain" method="model.strain" job={dfmJob} testid="card-residuals" scroll>
         <p className="muted" style={{ fontSize: 12 }}>Each cell is the night's value minus loading times factor, in units of that signal's noise. Faded cells have fewer than 14 baseline nights behind them.</p>
-        <Residuals dfm={fit.dfm} range={range} />
+        <Wide>{(w) => <Residuals dfm={fit.dfm} range={range} width={w} />}</Wide>
       </Card>
     </div>
   ) : dfm?.error ? (

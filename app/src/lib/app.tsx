@@ -99,7 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await st.saveProposals(d.proposals);
       // certain exposures (time zone, altitude) are labelled on their own, with a one-click undo
       let cur = await st.load();
-      for (const p of cur.proposals.filter((p) => p.auto && p.status === 'open')) await st.answer(p.id, 'confirm');
+      for (const p of cur.proposals.filter((p) => p.auto && p.status === 'open' && p.kind !== 'other')) await st.answer(p.id, 'confirm');
       cur = await st.load();
       await engine.setState(cur);
       setState(cur);

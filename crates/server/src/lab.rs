@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use wellness_lab_core::data::Data;
 use wellness_lab_core::lab::Lab;
-use wellness_lab_core::labels::{Label, Proposal, ProposalStatus, Source};
+use wellness_lab_core::labels::{Label, LabelKind, Proposal, ProposalStatus, Source};
 
 /// Read the wellness-v1 directory and the state database into a fresh `Lab`.
 pub fn reload_blocking(s: &AppState) -> Result<()> {
@@ -137,7 +137,8 @@ fn detect_blocking(s: &AppState) -> Result<Vec<Proposal>> {
     let mut added = false;
     for p in merged
         .iter_mut()
-        .filter(|p| p.auto && p.status == ProposalStatus::Open)
+        // "Other" names nothing, so it is never labelled on its own
+        .filter(|p| p.auto && p.status == ProposalStatus::Open && p.kind != LabelKind::Other)
     {
         if !labelled.contains(&p.id) {
             s.store.put_label(&Label {
