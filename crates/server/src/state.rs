@@ -149,6 +149,14 @@ impl Store {
                 "state.sqlite has schema version {v}, newer than this server understands ({USER_VERSION})"
             ),
         }
+        // repeated confirms once made several labels for one proposal: keep the first, retire the rest
+        conn.execute(
+            "UPDATE labels SET deleted_at = updated_at
+             WHERE deleted_at IS NULL AND proposal_id IS NOT NULL
+               AND id NOT IN (SELECT id FROM labels l2 WHERE l2.proposal_id = labels.proposal_id AND l2.deleted_at IS NULL
+                              ORDER BY created_at, id LIMIT 1)",
+            [],
+        )?;
         Ok(Store {
             conn: Mutex::new(conn),
         })

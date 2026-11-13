@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use wellness_lab_core::data::Data;
 use wellness_lab_core::lab::Lab;
-use wellness_lab_core::labels::{Proposal, ProposalStatus};
+use wellness_lab_core::labels::{Label, Proposal, ProposalStatus, Source};
 
 /// Read the wellness-v1 directory and the state database into a fresh `Lab`.
 pub fn reload_blocking(s: &AppState) -> Result<()> {
@@ -125,8 +125,45 @@ fn detect_blocking(s: &AppState) -> Result<Vec<Proposal>> {
         proposals: Vec<Proposal>,
     }
     let out: Out = serde_json::from_str(&r.json)?;
-    let merged = merge(out.proposals, &stored, &now);
+    let mut merged = merge(out.proposals, &stored, &now);
+    // certain exposures (a time-zone change, a stay at altitude, an episode above the ask ceiling) are labelled on
+    // their own, as the browser does in local mode; each label shows as inferred with an Undo
+    let labelled: BTreeSet<String> = s
+        .store
+        .live_labels()?
+        .into_iter()
+        .filter_map(|l| l.proposal_id)
+        .collect();
+    let mut added = false;
+    for p in merged
+        .iter_mut()
+        .filter(|p| p.auto && p.status == ProposalStatus::Open)
+    {
+        if !labelled.contains(&p.id) {
+            s.store.put_label(&Label {
+                id: uuid::Uuid::new_v4().to_string(),
+                kind: p.kind,
+                start_day: p.start_day,
+                end_day: p.end_day,
+                onset_day: None,
+                severity: None,
+                note: String::new(),
+                exclude_baseline: p.kind.default_exclude(),
+                source: Source::Inferred,
+                proposal_id: Some(p.id.clone()),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                deleted_at: None,
+            })?;
+            added = true;
+        }
+        p.status = ProposalStatus::Confirmed;
+        p.answered_at = Some(now.clone());
+    }
     s.store.replace_proposals(&merged)?;
+    if added {
+        lab.set_labels(s.store.labels()?);
+    }
     lab.set_proposals(merged.clone());
     Ok(merged)
 }

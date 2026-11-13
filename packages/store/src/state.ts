@@ -87,6 +87,13 @@ export class LocalStateStore implements StateStore {
     if (answer === 'confirm') {
       p.status = 'confirmed';
       const kind: LabelKind = label?.kind ?? p.kind;
+      // answering twice (a double click, a repeated key) updates the proposal's label instead of adding another
+      const prev = this.s.labels.find((x) => x.proposal_id === p.id && !x.deleted_at);
+      if (prev) {
+        Object.assign(prev, { kind, ...label, id: prev.id, updated_at: now() });
+        await this.save();
+        return { proposal: structuredClone(p), label: structuredClone(prev) };
+      }
       created = {
         id: uid(), kind, start_day: p.start_day, end_day: p.end_day, onset_day: null, severity: null, note: '',
         exclude_baseline: kindInfo(kind).exclude, source: p.auto ? 'inferred' : 'confirmed', proposal_id: p.id,

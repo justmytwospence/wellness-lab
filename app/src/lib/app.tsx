@@ -194,8 +194,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await settle(s, false);
   }, [settle]);
 
+  const answering = useRef(new Set<string>());
   const answer = useCallback(async (id: string, a: Answer, label?: Partial<Label>) => {
-    const r = await storeRef.current.answer(id, a, label);
+    // one answer at a time per question: a double click or a held key must not answer twice
+    if (answering.current.has(id)) return;
+    answering.current.add(id);
+    let r: Awaited<ReturnType<StateStore['answer']>>;
+    try {
+      r = await storeRef.current.answer(id, a, label);
+    } finally {
+      answering.current.delete(id);
+    }
     await wrap(async () => {});
     const verb = { confirm: 'Confirmed', deny: 'Denied', unsure: 'Marked unsure', snooze: 'Snoozed for 7 days' }[a];
     toast(verb, () => { void storeRef.current.undo(id, r.label?.id).then(() => wrap(async () => {})); });

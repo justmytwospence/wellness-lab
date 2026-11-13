@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tower::ServiceExt;
 use wellness_lab_core::data::Data;
-use wellness_lab_core::labels::{Proposal, ProposalStatus};
+use wellness_lab_core::labels::{Proposal, ProposalStatus, Source};
 use wellness_lab_server::config::Config;
 use wellness_lab_server::{api, lab, notify, sync, AppState};
 
@@ -478,9 +478,43 @@ async fn answering_proposals() {
     assert_eq!(l["kind"], json!(p.kind));
     assert_eq!(l["start_day"], p.start_day);
     assert_eq!(l["end_day"], p.end_day);
+    // a second confirm (a double click) updates that label rather than adding another
+    let again = call(
+        &app,
+        Method::POST,
+        &format!("/api/proposals/{}/answer", p.id),
+        Some(json!({"answer": "confirm"})),
+    )
+    .await
+    .json();
+    assert_eq!(again["label"]["id"], l["id"]);
+    assert_eq!(again["label"]["note"], "felt rough");
+    assert_eq!(
+        s.store
+            .live_labels()
+            .unwrap()
+            .iter()
+            .filter(|x| x.proposal_id.as_deref() == Some(p.id.as_str()))
+            .count(),
+        1
+    );
     assert_eq!(l["note"], "felt rough");
-    assert_eq!(s.store.live_labels().unwrap().len(), 1);
-    assert_eq!(s.lab.lock().unwrap().labels.len(), 1);
+    // detection labels certain exposures on its own; everything else came from answers
+    let mine = || {
+        s.store
+            .live_labels()
+            .unwrap()
+            .into_iter()
+            .filter(|l| l.source != Source::Inferred)
+            .count()
+    };
+    let auto = s.store.live_labels().unwrap().len() - mine();
+    assert!(
+        auto > 0,
+        "the synthetic travel and altitude should be labelled on their own"
+    );
+    assert_eq!(mine(), 1);
+    assert_eq!(s.lab.lock().unwrap().labels.len(), 1 + auto);
     lab::redetect(&s).await.unwrap();
     assert_eq!(
         s.store.proposal(&p.id).unwrap().unwrap().status,
@@ -504,7 +538,7 @@ async fn answering_proposals() {
         s.store.proposal(&q.id).unwrap().unwrap().status,
         ProposalStatus::Denied
     );
-    assert_eq!(s.store.live_labels().unwrap().len(), 1);
+    assert_eq!(mine(), 1);
 
     // snooze: a week out
     let z = &qs[2];

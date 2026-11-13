@@ -341,24 +341,45 @@ async fn answer(
     match a.answer.as_str() {
         "confirm" => {
             let lp = a.label.unwrap_or_default();
-            let kind = lp.kind.unwrap_or(p.kind);
+            // answering twice (a double click, a repeated key) updates the proposal's label instead of adding another;
+            // what the second answer leaves out keeps the first answer's value
+            let prev = s
+                .store
+                .live_labels()?
+                .into_iter()
+                .find(|l| l.proposal_id.as_deref() == Some(p.id.as_str()));
+            let kind = lp.kind.or(prev.as_ref().map(|l| l.kind)).unwrap_or(p.kind);
             let (start, end) = (
-                lp.start_day.unwrap_or(p.start_day),
-                lp.end_day.unwrap_or(p.end_day),
+                lp.start_day
+                    .or(prev.as_ref().map(|l| l.start_day))
+                    .unwrap_or(p.start_day),
+                lp.end_day
+                    .or(prev.as_ref().map(|l| l.end_day))
+                    .unwrap_or(p.end_day),
             );
-            check_days(start, end, lp.onset_day)?;
+            let onset = lp.onset_day.or(prev.as_ref().and_then(|l| l.onset_day));
+            check_days(start, end, onset)?;
             let l = Label {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: prev
+                    .as_ref()
+                    .map(|l| l.id.clone())
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                 kind,
                 start_day: start,
                 end_day: end,
-                onset_day: lp.onset_day,
-                severity: lp.severity,
-                note: lp.note.unwrap_or_default(),
-                exclude_baseline: lp.exclude_baseline.unwrap_or(kind.default_exclude()),
+                onset_day: onset,
+                severity: lp.severity.or(prev.as_ref().and_then(|l| l.severity)),
+                note: lp
+                    .note
+                    .or(prev.as_ref().map(|l| l.note.clone()))
+                    .unwrap_or_default(),
+                exclude_baseline: lp
+                    .exclude_baseline
+                    .or(prev.as_ref().map(|l| l.exclude_baseline))
+                    .unwrap_or(kind.default_exclude()),
                 source: Source::Confirmed,
                 proposal_id: Some(p.id.clone()),
-                created_at: t.clone(),
+                created_at: prev.map(|l| l.created_at).unwrap_or_else(|| t.clone()),
                 updated_at: t.clone(),
                 deleted_at: None,
             };
