@@ -99,7 +99,8 @@ jobs:
         run: |
           mkdir -p dist
           tgz="$(cd dist && npm pack ../packages/engine/pkg --silent)"
-          mv "dist/$tgz" "dist/wellness-lab-wasm-${{ needs.version.outputs.version }}.tgz"
+          want="wellness-lab-wasm-${{ needs.version.outputs.version }}.tgz"
+          [ "$tgz" = "$want" ] || mv "dist/$tgz" "dist/$want"
       - uses: actions/upload-artifact@v4
         with:
           name: wasm-package
