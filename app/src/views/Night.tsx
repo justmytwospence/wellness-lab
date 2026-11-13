@@ -116,7 +116,7 @@ function Hypnogram({ night, xr, onBrush }: { night: NightChannels; xr: [number, 
 }
 
 const GROUPS: { title: string; grade?: 'A' | 'B' | 'C' | 'D'; rows: [string, string, (v: number) => string][] }[] = [
-  { title: 'Timing', grade: 'A', rows: [['onset_clock', 'Fell asleep', (v) => clock(v)], ['wake_clock', 'Woke', (v) => clock(v)], ['mid_clock', 'Midsleep', (v) => clock(v)], ['tib_h', 'Time in bed (h)', (v) => v.toFixed(2)], ['tst_h', 'Sleep (h)', (v) => v.toFixed(2)]] },
+  { title: 'Timing', grade: 'A', rows: [['onset_clock', 'Fell asleep', (v) => clock(v * 60)], ['wake_clock', 'Woke', (v) => clock(v * 60)], ['mid_clock', 'Midsleep', (v) => clock(v * 60)], ['tib_h', 'Time in bed (h)', (v) => v.toFixed(2)], ['tst_h', 'Sleep (h)', (v) => v.toFixed(2)]] },
   { title: 'Heart', grade: 'B', rows: [['hr_min30', 'Lowest 30 min (bpm)', (v) => v.toFixed(0)], ['hr_mean', 'Mean (bpm)', (v) => v.toFixed(1)], ['hr_nadir', 'Nadir (bpm)', (v) => v.toFixed(0)], ['dip_pct', 'Dip (%)', (v) => v.toFixed(1)], ['hr_early_late', 'Early minus late (bpm)', (v) => signed(v, 1)]] },
   { title: 'HRV', grade: 'B', rows: [['rmssd_mean', 'RMSSD (ms)', (v) => v.toFixed(0)], ['rmssd_4h', 'First 4 h (ms)', (v) => v.toFixed(0)], ['rmssd_last2h', 'Last 2 h (ms)', (v) => v.toFixed(0)], ['rmssd_norm', 'Normalised', (v) => v.toFixed(2)], ['garmin_hrv', 'Garmin night (ms)', (v) => v.toFixed(0)]] },
   { title: 'Stress and Body Battery', grade: 'C', rows: [['sleep_stress', 'Sleep stress', (v) => v.toFixed(0)], ['bb_wake', 'Body Battery at wake', (v) => v.toFixed(0)], ['bb_change', 'Charged', (v) => signed(v, 0)]] },

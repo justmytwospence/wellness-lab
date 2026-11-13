@@ -93,7 +93,8 @@ function CircadianView() {
   const asleep = act.data?.arrays.asleep as Uint8Array | undefined;
   const actNeeds = inputs.ready && inputs.missing('steps') ? 'steps' : !meta || meta.height === 0 ? (act.data ? 'at least 2 days with activity data in this range' : null) : null;
 
-  const stat = (label: string, v: string) => <div key={label}><span className="l">{label}</span>{v}</div>;
+  // while the job runs the strip says so, rather than showing every value as missing
+  const stat = (label: string, v: string) => <div key={label}><span className="l">{label}</span>{circ.loading && !circ.data ? <span className="muted">…</span> : v}</div>;
   const lastOnset = last(np, 'l5_onset'), lastM10 = last(np, 'm10_onset');
 
   const exp = <Experimental />;
@@ -254,7 +255,7 @@ function CircadianView() {
           {stat('L5 starts', Number.isFinite(lastOnset) ? hm(lastOnset) : '\u2013')}
           {stat('M10 starts', Number.isFinite(lastM10) ? hm(lastM10) : '\u2013')}
           {stat('Sleep regularity', num(last(sri, 'sri'), 0))}
-          {stat('Social jet lag', Number.isFinite(last(chr, 'sjl')) ? `${last(chr, 'sjl').toFixed(1)} h` : '\u2013')}
+          {stat('Social jet lag', Number.isFinite(last(chr, 'sjl')) ? `${last(chr, 'sjl').toFixed(2)} h` : '\u2013')}
           {stat('Sleep debt (14 nights)', Number.isFinite(last(debt, 'debt14')) ? `${last(debt, 'debt14').toFixed(1)} h` : '\u2013')}
         </div>
       }

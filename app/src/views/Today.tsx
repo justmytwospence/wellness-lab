@@ -19,7 +19,7 @@ const METRICS: Metric[] = [
   { id: 'sleep_stress', label: 'Sleep stress', unit: '', fmt: (v) => v.toFixed(0), method: 'night.stress' },
   { id: 'skin_temp', label: 'Skin temperature', unit: '\u00b0C', fmt: (v) => v.toFixed(2), method: 'night.hr' },
   { id: 'tst_h', label: 'Sleep time', unit: '', fmt: duration, method: 'night.stages' },
-  { id: 'mid_clock', label: 'Midsleep', unit: '', fmt: (v) => clock(v), method: 'night.timing' },
+  { id: 'mid_clock', label: 'Midsleep', unit: '', fmt: (v) => clock(v * 60), method: 'night.timing' },
   { id: 'sleep_score', label: 'Garmin sleep score', unit: '', fmt: (v) => v.toFixed(0), method: 'garmin.teardown' },
   { id: 'bb_change', label: 'Body Battery charge', unit: '', fmt: (v) => signed(v, 0), method: 'garmin.teardown' },
 ];
