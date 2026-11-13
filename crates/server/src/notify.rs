@@ -127,8 +127,8 @@ pub async fn send_webhook(s: &AppState, payload: &Value) -> Result<(), String> {
     check(rq.send().await).await
 }
 
-/// Tell the webhook that a question it was sent has been answered (or reopened), so whatever showed it (a chat
-/// message, say) can say so. Questions that were never sent are not mentioned; failures are logged, never retried.
+/// Tell the webhook that a question it was sent has been answered, reopened, or retired by detection (a newer
+/// question replaced it), so whatever showed it (a chat message, say) can say so. Questions that were never sent are not mentioned; failures are logged, never retried.
 pub fn tell_answer(s: &Arc<AppState>, p: &Proposal, label: Option<&Label>) {
     if s.cfg.webhook_url.is_none() || p.notified_at.is_none() {
         return;
@@ -138,7 +138,11 @@ pub fn tell_answer(s: &Arc<AppState>, p: &Proposal, label: Option<&Label>) {
         _ => return,
     }
     let payload = json!({
-        "type": if p.status == ProposalStatus::Open { "reopened" } else { "answered" },
+        "type": match p.status {
+            ProposalStatus::Open => "reopened",
+            ProposalStatus::Expired => "expired",
+            _ => "answered",
+        },
         "proposal": p,
         "label": label,
         "url": s.cfg.inbox_url(),

@@ -95,7 +95,8 @@ pub fn merge(fresh: Vec<Proposal>, stored: &[Proposal], now: &str) -> Vec<Propos
     out
 }
 
-fn detect_blocking(s: &AppState) -> Result<Vec<Proposal>> {
+/// Detection's result, plus the questions it retired that the user had been sent (their messages should say so).
+fn detect_blocking(s: &AppState) -> Result<(Vec<Proposal>, Vec<Proposal>)> {
     let now = now();
     let mut stored = s.store.proposals()?;
     // a snooze ends after its week: the proposal is open again
@@ -166,14 +167,31 @@ fn detect_blocking(s: &AppState) -> Result<Vec<Proposal>> {
         lab.set_labels(s.store.labels()?);
     }
     lab.set_proposals(merged.clone());
-    Ok(merged)
+    let was_open: BTreeSet<&str> = stored
+        .iter()
+        .filter(|p| p.status == ProposalStatus::Open)
+        .map(|p| p.id.as_str())
+        .collect();
+    let retired = merged
+        .iter()
+        .filter(|p| {
+            p.status == ProposalStatus::Expired
+                && p.notified_at.is_some()
+                && was_open.contains(p.id.as_str())
+        })
+        .cloned()
+        .collect();
+    Ok((merged, retired))
 }
 
 /// Run detection, store the merged proposals, then notify about new questions.
 pub async fn redetect(s: &Arc<AppState>) -> Result<DetectReport> {
     let _g = s.detect_lock.lock().await;
     let s2 = s.clone();
-    let merged = tokio::task::spawn_blocking(move || detect_blocking(&s2)).await??;
+    let (merged, retired) = tokio::task::spawn_blocking(move || detect_blocking(&s2)).await??;
+    for p in &retired {
+        notify::tell_answer(s, p, None);
+    }
     let sent = notify::send_new(s).await;
     Ok(DetectReport {
         proposals: merged.len(),
