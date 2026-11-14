@@ -33,6 +33,7 @@ pub mod optim;
 pub mod registry;
 pub mod render;
 pub mod schema;
+pub mod seasonal;
 pub mod stats;
 pub mod synth;
 pub mod teardown;

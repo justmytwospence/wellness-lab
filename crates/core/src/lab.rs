@@ -11,7 +11,8 @@ use crate::nights::{channels_with, night_features};
 use crate::render::{bin_matrix, domain_for, m4, raster, typical, Align, Colormap};
 use crate::stats::{mean, quantile_linear};
 use crate::{
-    beats, bench, circadian, compare, coverage, detect, dfa, hrv4t, kalman, registry, teardown,
+    beats, bench, circadian, compare, coverage, detect, dfa, hrv4t, kalman, registry, seasonal,
+    teardown,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -60,6 +61,13 @@ pub enum Job {
     },
     /// DFA a1 windows, thresholds, history and durability for every recording
     Dfa,
+    /// Deviation from a centred one-year median by day of year, for the By year and Radial views
+    Seasonal {
+        from: i32,
+        to: i32,
+        source: String,
+        column: String,
+    },
     Nights {
         from: Option<i32>,
         to: Option<i32>,
@@ -540,6 +548,24 @@ impl Lab {
                 t.txt.retain(|k, _| columns.contains(k));
                 json(&t)
             }
+            Job::Seasonal {
+                from,
+                to,
+                source,
+                column,
+            } => {
+                let t = match source.as_str() {
+                    "days" => self.data.days.clone(),
+                    "nights" => self.nights().clone(),
+                    s => return Err(format!("seasonal: unknown source {s}")),
+                };
+                json(&seasonal::seasonal(
+                    &t.col("day"),
+                    &t.col(&column),
+                    from,
+                    to,
+                ))
+            }
             Job::Registry => Ok(JobResult {
                 json: registry::registry_json(),
                 arrays: vec![],
@@ -636,6 +662,14 @@ mod tests {
     }
 
     #[test]
+    fn seasonal_job_rejects_unknown_source() {
+        let e = lab()
+            .run(r#"{"kind":"seasonal","from":0,"to":1,"source":"x","column":"rhr"}"#)
+            .unwrap_err();
+        assert!(e.contains("unknown source"), "{e}");
+    }
+
+    #[test]
     fn every_job_runs_on_synthetic_data() {
         let mut l = lab();
         let from = 19_723;
@@ -655,6 +689,8 @@ mod tests {
             json!({"kind": "dfm"}),
             json!({"kind": "coverage"}),
             json!({"kind": "days", "from": from, "to": to, "columns": ["rhr", "steps"]}),
+            json!({"kind": "seasonal", "from": from, "to": to, "source": "days", "column": "rhr"}),
+            json!({"kind": "seasonal", "from": from, "to": to, "source": "nights", "column": "resp_mean"}),
             json!({"kind": "registry"}),
             json!({"kind": "sessions"}),
             json!({"kind": "dfa"}),

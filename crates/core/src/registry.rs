@@ -119,6 +119,7 @@ const REFS: &[(&str, &str, &str, u16, &str)] = &[
     ("shumway1982", "Shumway & Stoffer 1982", "An approach to time series smoothing and forecasting using the EM algorithm", 1982, "10.1111/j.1467-9892.1982.tb00349.x"),
     ("kario2003", "Kario 2003", "Morning surge in blood pressure as a predictor of silent and clinical cerebrovascular disease", 2003, "10.1161/01.CIR.0000056521.67546.AA"),
     ("jugel2014", "Jugel 2014", "M4: a visualization-oriented time series data aggregation", 2014, ""),
+    ("cleveland1990", "Cleveland 1990", "STL: A seasonal-trend decomposition procedure based on loess", 1990, ""),
     ("firstbeat_stress", "Firstbeat 2014", "Stress and recovery analysis method based on 24-hour heart rate variability (white paper)", 2014, ""),
     ("firstbeat_sleep", "Firstbeat 2019", "A sleep analysis method based on heart rate variability (white paper)", 2019, ""),
 ];
@@ -230,6 +231,7 @@ pub fn methods() -> Vec<MethodSpec> {
         m("garmin.teardown", "Garmin score teardown", "Analysis", 'C', "What Garmin's own published inputs predict for its sleep score and training readiness, a rebuilt Body Battery, and the window and width that reproduce the HRV status band.", "OLS and non-negative least squares on the components; Body Battery as a rate table by stress band and sleep; grid search of the baseline rule.", &["days", "body_battery", "stress"], None, &["firstbeat_stress", "firstbeat_sleep"], vec![]),
         m("experiments.n_of_1", "Self-experiments", "Analysis", 'B', "Alternating blocks of a change and the usual, order randomised, washout nights left out, adherence recorded; the answer is a probability of a worthwhile effect, with 'inconclusive' kept separate from 'no effect'.", "effect = mean(A) - mean(B); se from an autocorrelation-corrected sample size; normal posterior against the smallest worthwhile change.", &["nights"], None, &["daza2018", "swinton2018"], vec![]),
         m("render.m4", "Line downsampling (M4)", "Display", 'A', "Long lines are drawn from the first, lowest, highest and last value of each pixel column, which is exactly what a full-resolution line would draw.", "per pixel column: first, min, max, last.", &[], None, &["jugel2014"], vec![]),
+        m("display.seasonal", "Seasonal view", "Display", 'B', "Each day's deviation from the metric's own centred one-year median, smoothed over 15 days, drawn one line per year on a shared calendar so the same weeks of different years line up.", "dev = mean over 15 centred days of (x - median of x over 365 centred days, at least 120); years with at least 180 days in the range, at least two years.", &["days", "nights"], None, &["cleveland1990"], vec![]),
     ]
 }
 
