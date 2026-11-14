@@ -151,7 +151,9 @@ pub fn bench(
         };
         // successive quiet nights at most three days apart: strictly consecutive quiet nights are rare in real
         // data (any event, hard day or time-zone change breaks the run), and the level barely drifts in three days
-        let qi: Vec<usize> = (0..nights.n).filter(|&i| quiet[i] && col[i].is_finite()).collect();
+        let qi: Vec<usize> = (0..nights.n)
+            .filter(|&i| quiet[i] && col[i].is_finite())
+            .collect();
         let pairs: Vec<(f64, f64)> = qi
             .windows(2)
             .filter(|w| days[w[1]] - days[w[0]] <= 3.0)
