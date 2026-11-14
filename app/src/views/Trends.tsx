@@ -12,6 +12,7 @@ import { Panel } from '../ui/Panel';
 import { View } from '../ui/View';
 import { Empty } from '../charts/small';
 import { ChartCard } from '../charts/wellness/ChartCard';
+import { SeasonalView, type SeasonalSpec } from '../charts/wellness/seasonal';
 import { TimeSeries, withAlpha, type TsSeries } from '../charts/wellness/ts';
 import { BoxPlots, HeatGrid, Histogram, Legend, StackedAreas, StackedBars } from '../charts/wellness/svg';
 import { SleepTiming, bedHour, rdylgn, type NightRow } from '../charts/wellness/trendcharts';
@@ -61,6 +62,15 @@ const BOX_METRICS: BoxMetric[] = [
 const DAY_INPUT: Record<string, string> = {
   rhr: 'resting heart rate (days.rhr)', hrv_night: 'overnight HRV (days.hrv_night)', tr_score: 'training readiness (days.tr_score)',
   bb_high: 'Body Battery (days.bb_high)', rest_s: 'stress durations (days.rest_s)',
+};
+/** The metrics that get the By year and Radial views, by FocusItem id. */
+const SEASONAL: Record<string, SeasonalSpec> = {
+  rhr: { source: 'days', column: 'rhr', label: 'Resting heart rate', unit: 'bpm', digits: 1 },
+  hrv: { source: 'days', column: 'hrv_night', label: 'Overnight HRV', unit: 'ms', digits: 0 },
+  readiness: { source: 'days', column: 'tr_score', label: 'Training readiness', unit: 'points', digits: 0 },
+  bb: { source: 'days', column: 'bb_high', label: 'Body Battery', unit: 'points', digits: 0 },
+  spo2: { source: 'nights', column: 'spo2_mean', label: 'SpO2 asleep', unit: '%', digits: 1 },
+  resp: { source: 'nights', column: 'resp_mean', label: 'Breathing rate asleep', unit: 'breaths/min', digits: 1 },
 };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -212,21 +222,27 @@ function TrendsView() {
   const render = (it: FocusItem) => {
     switch (it.id) {
       case 'rhr': return (
-        <ChartCard title="Resting heart rate" sub="Daily value (dots) and 7-day mean (line)" method="night.hr" job={{ kind: 'days', from, to, columns: ['rhr'] }} needs={need.rhr}>
-          <Fill>{({ h }) => <TimeSeries x={x} series={dotsAndMean('Resting HR', rhr, PAL.alert)} height={h} yLabel="bpm" sync="rec" yFmt={(v) => v.toFixed(0)} />}</Fill>
-        </ChartCard>
+        <SeasonalView spec={SEASONAL.rhr!} from={from} to={to}>{(s) => (
+          <ChartCard title="Resting heart rate" sub={s.sub ?? 'Daily value (dots) and 7-day mean (line)'} method={s.method ?? 'night.hr'} job={s.job ?? { kind: 'days', from, to, columns: ['rhr'] }} needs={need.rhr} actions={s.toggle}>
+            <Fill>{({ h }) => s.seasonal ? s.seasonal(h) : <TimeSeries x={x} series={dotsAndMean('Resting HR', rhr, PAL.alert)} height={h} yLabel="bpm" sync="rec" yFmt={(v) => v.toFixed(0)} />}</Fill>
+          </ChartCard>
+        )}</SeasonalView>
       );
       case 'hrv': return (
-        <ChartCard title="Overnight HRV" sub="Garmin's nightly average by its status; line: Garmin's 7-day average; band: its balanced range" method="baseline.normal_range" job={{ kind: 'days', from, to, columns: ['hrv_night', 'hrv_week', 'hrv_bal_lo', 'hrv_bal_hi', 'hrv_status'] }} needs={need.hrv}>
-          <Fill>{({ h }) => <TimeSeries x={x} series={hrvSeries} bands={[{ lo: 0, hi: 1, fill: withAlpha(NB.balanced, 0.18) }]} height={h} yLabel="ms" sync="rec" yFmt={(v) => v.toFixed(0)} />}</Fill>
-          <Legend items={HRV_STATUS.map(([, label, color]) => ({ label, color }))} />
-        </ChartCard>
+        <SeasonalView spec={SEASONAL.hrv!} from={from} to={to}>{(s) => (
+          <ChartCard title="Overnight HRV" sub={s.sub ?? "Garmin's nightly average by its status; line: Garmin's 7-day average; band: its balanced range"} method={s.method ?? 'baseline.normal_range'} job={s.job ?? { kind: 'days', from, to, columns: ['hrv_night', 'hrv_week', 'hrv_bal_lo', 'hrv_bal_hi', 'hrv_status'] }} needs={need.hrv} actions={s.toggle}>
+            <Fill>{({ h }) => s.seasonal ? s.seasonal(h) : <TimeSeries x={x} series={hrvSeries} bands={[{ lo: 0, hi: 1, fill: withAlpha(NB.balanced, 0.18) }]} height={h} yLabel="ms" sync="rec" yFmt={(v) => v.toFixed(0)} />}</Fill>
+            {!s.seasonal && <Legend items={HRV_STATUS.map(([, label, color]) => ({ label, color }))} />}
+          </ChartCard>
+        )}</SeasonalView>
       );
       case 'readiness': return (
-        <ChartCard title="Training readiness" sub="Each morning's score by Garmin's level; line: 14-day mean" method="garmin.teardown" job={{ kind: 'days', from, to, columns: ['tr_score', 'tr_level'] }} needs={need.readiness}>
-          <Fill>{({ h }) => <TimeSeries x={x} series={readySeries} height={h} yLabel="score" sync="rec" yRange={[0, 100]} yFmt={(v) => v.toFixed(0)} />}</Fill>
-          <Legend items={READY_LEVELS.map(([k, color]) => ({ label: k[0] + k.slice(1).toLowerCase(), color }))} />
-        </ChartCard>
+        <SeasonalView spec={SEASONAL.readiness!} from={from} to={to}>{(s) => (
+          <ChartCard title="Training readiness" sub={s.sub ?? "Each morning's score by Garmin's level; line: 14-day mean"} method={s.method ?? 'garmin.teardown'} job={s.job ?? { kind: 'days', from, to, columns: ['tr_score', 'tr_level'] }} needs={need.readiness} actions={s.toggle}>
+            <Fill>{({ h }) => s.seasonal ? s.seasonal(h) : <TimeSeries x={x} series={readySeries} height={h} yLabel="score" sync="rec" yRange={[0, 100]} yFmt={(v) => v.toFixed(0)} />}</Fill>
+            {!s.seasonal && <Legend items={READY_LEVELS.map(([k, color]) => ({ label: k[0] + k.slice(1).toLowerCase(), color }))} />}
+          </ChartCard>
+        )}</SeasonalView>
       );
       case 'drivers': return (
         <Panel title="What drives readiness" sub="Weekly average of each factor Garmin reports (100 = helping most)" method="garmin.teardown" job={{ kind: 'days', from, to, columns: FACTORS.map((f) => f[0]) }} needs={need.drivers} scroll>
@@ -241,15 +257,17 @@ function TrendsView() {
         </Panel>
       );
       case 'bb': return (
-        <ChartCard title="Body Battery" sub="Band: 7-day mean of the daily low to high; line: 7-day mean of the charge" method="garmin.teardown" job={{ kind: 'days', from, to, columns: ['bb_low', 'bb_high', 'bb_charged'] }} needs={need.bb}>
-          <Fill>{({ h }) => (
-            <TimeSeries x={x} series={[
-              { label: 'Low', values: bbLo, color: NB.bb, mode: 'none' },
-              { label: 'High', values: bbHi, color: NB.bb, mode: 'none' },
-              { label: 'Charged', values: roll(D.get('bb_charged'), 7, 3), color: '#1d3557', width: 1.6 },
-            ]} bands={[{ lo: 0, hi: 1, fill: withAlpha(NB.bb, 0.35) }]} height={h} yRange={[0, 100]} yFmt={(v) => v.toFixed(0)} />
-          )}</Fill>
-        </ChartCard>
+        <SeasonalView spec={SEASONAL.bb!} from={from} to={to}>{(s) => (
+          <ChartCard title="Body Battery" sub={s.sub ?? 'Band: 7-day mean of the daily low to high; line: 7-day mean of the charge'} method={s.method ?? 'garmin.teardown'} job={s.job ?? { kind: 'days', from, to, columns: ['bb_low', 'bb_high', 'bb_charged'] }} needs={need.bb} actions={s.toggle}>
+            <Fill>{({ h }) => s.seasonal ? s.seasonal(h) : (
+              <TimeSeries x={x} series={[
+                { label: 'Low', values: bbLo, color: NB.bb, mode: 'none' },
+                { label: 'High', values: bbHi, color: NB.bb, mode: 'none' },
+                { label: 'Charged', values: roll(D.get('bb_charged'), 7, 3), color: '#1d3557', width: 1.6 },
+              ]} bands={[{ lo: 0, hi: 1, fill: withAlpha(NB.bb, 0.35) }]} height={h} yRange={[0, 100]} yFmt={(v) => v.toFixed(0)} />
+            )}</Fill>
+          </ChartCard>
+        )}</SeasonalView>
       );
       case 'stress': return (
         <ChartCard title="Stress by month" sub="Average hours per day at each stress level" method="night.stress" job={{ kind: 'days', from, to, columns: ['rest_s', 'low_s', 'med_s', 'high_s'] }} needs={need.stress}>
@@ -258,14 +276,18 @@ function TrendsView() {
         </ChartCard>
       );
       case 'spo2': return (
-        <ChartCard title="SpO2 asleep" sub="Nightly mean (dots) and 7-day mean" method="night.spo2" job={{ kind: 'nights', from, to }} needs={need.spo2}>
-          <Fill>{({ h }) => <TimeSeries x={x} series={dotsAndMean('SpO2 %', spo2, NB.bb)} height={h} sync="br" yFmt={(v) => v.toFixed(1)} />}</Fill>
-        </ChartCard>
+        <SeasonalView spec={SEASONAL.spo2!} from={from} to={to}>{(s) => (
+          <ChartCard title="SpO2 asleep" sub={s.sub ?? 'Nightly mean (dots) and 7-day mean'} method={s.method ?? 'night.spo2'} job={s.job ?? { kind: 'nights', from, to }} needs={need.spo2} actions={s.toggle}>
+            <Fill>{({ h }) => s.seasonal ? s.seasonal(h) : <TimeSeries x={x} series={dotsAndMean('SpO2 %', spo2, NB.bb)} height={h} sync="br" yFmt={(v) => v.toFixed(1)} />}</Fill>
+          </ChartCard>
+        )}</SeasonalView>
       );
       case 'resp': return (
-        <ChartCard title="Breathing rate asleep" sub="Nightly mean (dots) and 7-day mean" method="night.resp" job={{ kind: 'nights', from, to }} needs={need.resp}>
-          <Fill>{({ h }) => <TimeSeries x={x} series={dotsAndMean('Breaths/min', resp, NB.resp)} height={h} sync="br" yFmt={(v) => v.toFixed(1)} />}</Fill>
-        </ChartCard>
+        <SeasonalView spec={SEASONAL.resp!} from={from} to={to}>{(s) => (
+          <ChartCard title="Breathing rate asleep" sub={s.sub ?? 'Nightly mean (dots) and 7-day mean'} method={s.method ?? 'night.resp'} job={s.job ?? { kind: 'nights', from, to }} needs={need.resp} actions={s.toggle}>
+            <Fill>{({ h }) => s.seasonal ? s.seasonal(h) : <TimeSeries x={x} series={dotsAndMean('Breaths/min', resp, NB.resp)} height={h} sync="br" yFmt={(v) => v.toFixed(1)} />}</Fill>
+          </ChartCard>
+        )}</SeasonalView>
       );
       case 'timing': return (
         <ChartCard title="Every night" sub="Each line runs from falling asleep to waking, colored by Garmin's sleep score" method="night.timing" job={{ kind: 'nights', from, to }} needs={need.timing}>

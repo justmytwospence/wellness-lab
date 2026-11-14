@@ -138,6 +138,7 @@ export type Job =
   | { kind: 'experiment'; def: ExperimentDef; adherence?: Record<number, boolean> }
   | { kind: 'coverage' }
   | { kind: 'days'; from: number; to: number; columns: string[] }
+  | { kind: 'seasonal'; from: number; to: number; source: 'days' | 'nights'; column: string }
   | { kind: 'registry' };
 
 // Result shapes are the engine's serde output; the ones the app leans on are typed, the rest are open records.
@@ -161,6 +162,7 @@ export interface Registry { methods: MethodSpec[]; refs: RefSpec[] }
 export interface Results {
   night: NightChannels;
   nights: Table;
+  seasonal: Table;
   registry: Registry;
   raster: RasterMeta;
   detect: { proposals: Proposal[]; model_version: string };

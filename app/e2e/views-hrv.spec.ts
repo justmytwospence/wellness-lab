@@ -38,6 +38,13 @@ test('HRV, Thresholds and Beats render on demo data', async ({ page }) => {
     await expect(page.getByTestId('error-boundary')).toHaveCount(0);
   }
 
+  // the nightly chart gets the seasonal views once the range holds two years
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await page.getByRole('tab', { name: 'Baseline' }).click();
+  await page.getByRole('radio', { name: 'Radial' }).click();
+  await expect(page.getByRole('img', { name: 'Nightly HRV, radial' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'About display.seasonal' })).toBeVisible();
+
   for (const [link, heading] of [['Thresholds', 'Thresholds'], ['Beats', 'Beats']] as const) {
     await open(page, link);
     await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();

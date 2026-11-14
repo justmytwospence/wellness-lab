@@ -32,8 +32,8 @@ export function Missing({ needs }: { needs: string }) {
 }
 
 /** A chart with its title, one-line subtitle and the method button. */
-export function ChartCard({ title, subtitle, method, job, children }: { title: string; subtitle?: ReactNode; method: string; job?: unknown; children: ReactNode }) {
-  return <Panel title={title} sub={subtitle} method={method} job={job}>{children}</Panel>;
+export function ChartCard({ title, subtitle, method, job, actions, children }: { title: string; subtitle?: ReactNode; method: string; job?: unknown; actions?: ReactNode; children: ReactNode }) {
+  return <Panel title={title} sub={subtitle} method={method} job={job} actions={actions}>{children}</Panel>;
 }
 
 export interface Key { color: string; label: string; line?: boolean }

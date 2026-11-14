@@ -13,6 +13,7 @@ import { Empty } from '../charts/small';
 import { Plot } from '../charts/Plot';
 import { Raster } from '../charts/Raster';
 import { TimeChart, type Shade } from '../charts/TimeChart';
+import { SeasonalView } from '../charts/wellness/seasonal';
 import { ChartCard, GOOD, Legend, Missing, NeedsLargerScreen, Select, Slider, Split, useNarrow } from '../charts/lab';
 import { loess, quantile, sortedFinite } from '../charts/loess';
 import { AcuteNote, BaselineNote, IntroNote, ModelNote, NightNote, NightsNote, TrendsNote, type ModelNums } from '../charts/notes';
@@ -165,14 +166,16 @@ function BaselineChart({ r, from, to, job }: { r: Result; from: number; to: numb
   const bands = useMemo(() => [{ a: 0, b: 1, fill: `${PAL.hrv}1a` }, { a: 2, b: 3, fill: `${PAL.base}38` }], []);
   if (!v.days.length) return <Missing needs="nights with HRV in this span" />;
   return (
-    <ChartCard title="Nightly HRV against your normal range" method="baseline.normal_range" job={job}
-      subtitle="Dots: nights. Line: 7-night baseline. Light band: range for a night; blue band: range for the baseline; dotted: Garmin's balanced band">
-      <Legend items={[{ color: ADVICE_COLORS.normal, label: 'normal' }, { color: ADVICE_COLORS.high, label: 'high' }, { color: ADVICE_COLORS.watch, label: 'watch' }, { color: ADVICE_COLORS.easy, label: 'keep it easy' }, { color: ADVICE_COLORS.back_off, label: 'back off' }]} />
-      <Fill>{({ h }) => (
-        <TimeChart label="Nightly HRV against the normal range" days={v.days} lines={c.lines} bands={bands} dots={dots} log height={h} yTitle="rMSSD (ms, log scale)"
-          readout={(i) => `${isoDay(v.days[i]!)}  rMSSD ${finite(c.rmssd[i]) ? c.rmssd[i]!.toFixed(0) : '-'} ms  score ${finite(c.score[i]) ? c.score[i]!.toFixed(1) : '-'}  baseline ${finite(c.bscore[i]) ? c.bscore[i]!.toFixed(1) : '-'}  ${c.advice[i] ?? ''}  Garmin ${finite(c.garmin[i]) ? c.garmin[i] : '-'} ${(c.gstat[i] ?? '').toLowerCase()}  load ${finite(c.load[i]) ? c.load[i]!.toFixed(0) : '-'}`} />
-      )}</Fill>
-    </ChartCard>
+    <SeasonalView spec={{ source: 'nights', column: 'rmssd_mean', label: 'Nightly HRV', unit: 'ms', digits: 0 }} from={from} to={to}>{(s) => (
+      <ChartCard title="Nightly HRV against your normal range" method={s.method ?? 'baseline.normal_range'} job={s.job ?? job} actions={s.toggle}
+        subtitle={s.sub ?? "Dots: nights. Line: 7-night baseline. Light band: range for a night; blue band: range for the baseline; dotted: Garmin's balanced band"}>
+        {!s.seasonal && <Legend items={[{ color: ADVICE_COLORS.normal, label: 'normal' }, { color: ADVICE_COLORS.high, label: 'high' }, { color: ADVICE_COLORS.watch, label: 'watch' }, { color: ADVICE_COLORS.easy, label: 'keep it easy' }, { color: ADVICE_COLORS.back_off, label: 'back off' }]} />}
+        <Fill>{({ h }) => s.seasonal ? s.seasonal(h) : (
+          <TimeChart label="Nightly HRV against the normal range" days={v.days} lines={c.lines} bands={bands} dots={dots} log height={h} yTitle="rMSSD (ms, log scale)"
+            readout={(i) => `${isoDay(v.days[i]!)}  rMSSD ${finite(c.rmssd[i]) ? c.rmssd[i]!.toFixed(0) : '-'} ms  score ${finite(c.score[i]) ? c.score[i]!.toFixed(1) : '-'}  baseline ${finite(c.bscore[i]) ? c.bscore[i]!.toFixed(1) : '-'}  ${c.advice[i] ?? ''}  Garmin ${finite(c.garmin[i]) ? c.garmin[i] : '-'} ${(c.gstat[i] ?? '').toLowerCase()}  load ${finite(c.load[i]) ? c.load[i]!.toFixed(0) : '-'}`} />
+        )}</Fill>
+      </ChartCard>
+    )}</SeasonalView>
   );
 }
 

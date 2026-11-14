@@ -45,3 +45,35 @@ test('Typical, Trends and Circadian render charts on demo data', async ({ page }
 
   expect(errors).toEqual([]);
 });
+
+test('seasonal views on two years of demo data', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?demo=1');
+  await expect(page.getByText('Against your own baseline')).toBeVisible({ timeout: 45_000 });
+
+  // go() cannot take a query string, so the range is picked through the preset
+  await open(page, '/trends', 'Trends');
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page).toHaveURL(/range=all/);
+  await page.locator('[data-testid=focus-item][data-id=rhr]').click();
+  const switcher = page.getByRole('radiogroup', { name: 'Seasonal view' });
+  await expect(switcher).toBeVisible({ timeout: 45_000 });
+
+  await page.getByRole('radio', { name: 'By year' }).click();
+  await expect(page.getByRole('img', { name: 'Resting heart rate, by year' })).toBeVisible();
+  await expect(page).toHaveURL(/sv=year/);
+  await page.getByRole('button', { name: '2024', exact: true }).click();
+  await expect(page.getByRole('button', { name: '2024', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+  await page.getByRole('radio', { name: 'Radial' }).click();
+  await expect(page.getByRole('img', { name: 'Resting heart rate, radial' })).toBeVisible();
+
+  // six months holds fewer than two qualifying years: the switch goes and the timeline is back
+  await page.getByRole('button', { name: '6m', exact: true }).click();
+  await expect(switcher).toHaveCount(0);
+  await expect(page.locator('.u-over').first()).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByTestId('error-boundary')).toHaveCount(0);
+
+  expect(errors).toEqual([]);
+});
